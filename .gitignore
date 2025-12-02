@@ -1,0 +1,35 @@
+# This has the original folder that was shown in the final project presentation which has been deprecated
+final-project
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Environment Variables
+.env
+
+# IDEs
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# Data and Database
+*.db
+*.sqlite3
+data/
+notebooks/data/
+
+# Logs
+*.log
+logs/
