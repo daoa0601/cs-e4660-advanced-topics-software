@@ -36,3 +36,6 @@ logs/
 
 # Presentation
 PRESENTATION_SCRIPT.md
+
+# Insecure Test Documents
+project-demo/test_documents/
