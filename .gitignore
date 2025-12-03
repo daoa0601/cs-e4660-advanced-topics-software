@@ -33,3 +33,6 @@ notebooks/data/
 # Logs
 *.log
 logs/
+
+# Presentation
+PRESENTATION_SCRIPT.md
