@@ -4,7 +4,7 @@
 **Project**: Granular Cost Analysis for Multi-Stage LLM Pipelines  
 **Institution**: Aalto University — Advanced Topics in Software Systems  
 **Author**: Anh Dao | December 2025  
-**Total Experiment Cost**: $14.47
+**Total Experiment Cost**: $16.72
 
 ---
 
@@ -100,8 +100,7 @@ Organizations need:
 
 ### Experimental Design
 
-**MVP Phase**: 591 runs, baseline cost metrics, quality evaluation  
-**Demo Phase**: 736 runs, streaming, parallel execution, enhanced evaluation
+**Full Suite v2.0**: 1,545 runs across all workflows with streaming, parallel execution, and quality evaluation
 
 ---
 
@@ -109,19 +108,20 @@ Organizations need:
 
 ### Key Metrics
 
-| Metric | MVP | Demo | Total |
-|--------|-----|------|-------|
-| Pipeline Runs | 591 | 736 | **1,327** |
-| Stage Executions | 1,602 | 1,753 | **3,355** |
-| Total Cost | $6.40 | $8.07 | **$14.47** |
+| Metric | Value |
+|--------|-------|
+| Pipeline Runs | **1,545** |
+| Stage Executions | **3,599** |
+| Total Cost | **$16.72** |
 
-### Cost by Pipeline Type
+### Cost by Model
 
-| Pipeline | Flash | Pro | Ratio |
-|----------|-------|-----|-------|
-| Verbosity | $0.0010/run | $0.0075/run | 7.5x |
-| Context (5-turn) | $0.0045/run | $0.034/run | 7.6x |
-| ReAct | $0.0032/run | $0.024/run | 7.5x |
+| Model | Runs | Total Cost | Avg Cost/Run |
+|-------|------|------------|---------------|
+| Flash | 809 | $4.20 | $0.0052 |
+| Pro | 736 | $12.52 | $0.0170 |
+
+**Cost Ratio**: Pro costs **3.3x** more than Flash
 
 ### Stage Cost Distribution
 
@@ -145,11 +145,12 @@ Refinement      ██░░░░░░░░░░░░░░░░░░░�
 
 ### Quality Comparison
 
-| Model | Avg Quality | Quality per Dollar |
-|-------|-------------|-------------------|
-| Flash | 72.3 | **72,300** |
-| Pro | 78.5 | 10,300 |
-| Hybrid | 75.8 | 25,200 |
+| Model | Avg Quality |
+|-------|-------------|
+| Flash | 82.86 |
+| Pro | 84.45 |
+
+**Quality Difference**: Pro scores **+1.59** points higher than Flash
 
 ---
 
@@ -165,14 +166,14 @@ The Demo phase extended MVP with:
 | **Ground Truth** | 30 verifiable problems for objective accuracy |
 | **Verified Experiments** | Accuracy-based comparison (not simulated quality) |
 
-### Verified Experiment Results
+### Verified Experiment Results (Ground Truth)
 
 | Difficulty | Flash Accuracy | Pro Accuracy | Pro Advantage |
 |------------|---------------|--------------|---------------|
-| All | 70% | 90% | +28.6% |
+| All | 95% | 100% | +5.3% |
 | **Hard** | 60% | 80% | **+33.3%** |
 
-*Pro justifies its cost premium on complex reasoning tasks.*
+> **Key Finding**: Pro's advantage increases dramatically on hard problems, justifying its 3.3x cost premium for complex reasoning tasks.
 
 ---
 
@@ -198,31 +199,65 @@ The Demo phase extended MVP with:
 
 ## 7. Future Work
 
-| Priority | Enhancement |
-|----------|-------------|
-| High | Live API integration for verified experiments |
-| High | RAG cost tracking (embeddings + retrieval) |
-| Medium | Multi-provider support (OpenAI, Anthropic) |
-| Medium | Real-time cost monitoring dashboard |
-| Low | Benchmark integration (GSM8K, MATH, HumanEval) |
+### Research Directions
+
+| Direction | Description | Impact |
+|-----------|-------------|--------|
+| **Benchmark Integration** | GSM8K, MATH, HumanEval for standardized evaluation | Objective model comparison |
+| **Multi-Provider Analysis** | OpenAI GPT-4o, Anthropic Claude cost comparison | Cross-provider insights |
+| **Caching Optimization** | Measure and optimize prompt cache hit rates | Potential 50%+ savings |
+| **Adaptive Routing** | Route queries to optimal model based on complexity | Automated cost/quality tradeoff |
+
+### Engineering Improvements
+
+| Improvement | Description | Priority |
+|-------------|-------------|----------|
+| **Live API for Verified** | Replace simulated responses with actual Gemini calls | High |
+| **RAG Cost Tracking** | Embedding costs, retrieval latency, chunk analysis | High |
+| **Cost Monitoring Dashboard** | Real-time visualization of ongoing experiments | Medium |
+| **Cost Budgets** | Run pipelines with hard cost constraints | Medium |
+| **Multi-Region Pricing** | Compare costs across GCP regions | Low |
+
+### Known Limitations
+
+| Limitation | Mitigation |
+|------------|------------|
+| Simulated tools in ReAct | Future: integrate real tool APIs |
+| No embedding costs | Future: RAG pipeline with vector DB |
+| Single GCP region | Future: multi-region experiments |
+| Automated quality scores | Ground truth verification added for objectivity |
 
 ---
 
 ## Appendix: CLI Reference
 
+### Session Management
 ```bash
-# MVP experiments
-python -m src.experiment --full-experiment
-python -m src.experiment --workflow react --model flash --iterations 20
+python3 -m src.session new "experiment_name"   # Create isolated session
+python3 -m src.session list                     # List all sessions
+python3 -m src.session current                  # Show current session
+```
 
-# Demo: Domain experiments
-python -m src.experiments.domain_experiment --domain complex_reasoning --compare-models
+### Experiments
+```bash
+# Full suite (recommended)
+python3 -m src.experiment --full-experiment
 
-# Demo: Verified experiments (ground truth)
-python -m src.experiments.verified_experiment --compare-models -n 20
-python -m src.experiments.verified_experiment -d hard --compare-models
+# Specific workflow
+python3 -m src.experiment --workflow react --model flash --iterations 20
+
+# Domain experiments
+python3 -m src.experiments.domain_experiment --domain complex_reasoning --compare-models
+
+# Verified experiments (ground truth)
+python3 -m src.experiments.verified_experiment --compare-models -n 20 -d hard
+```
+
+### Report Generation
+```bash
+python3 notebooks/generate_report.py           # Generate all figures + summary
 ```
 
 ---
 
-**Platform v2.0** | December 2025 | [Detailed Docs](docs/)
+**Platform v2.0** | December 2025 | [Detailed Docs](docs/) | [Demo README](project-demo/README.md)
