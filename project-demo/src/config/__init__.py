@@ -74,6 +74,16 @@ from .documents import (
     list_catalog,
 )
 
+# Domain-specific prompt templates
+from .prompt_templates import (
+    DOMAINS,
+    DomainConfig,
+    PromptTemplate as DomainPromptTemplate,
+    get_domain,
+    list_domains,
+    generate_experiment_prompts,
+)
+
 # Default experiment settings
 DEFAULT_ITERATIONS = 20
 DELAY_BETWEEN_CALLS = 0.5
@@ -109,6 +119,13 @@ __all__ = [
     "SUMMARIZATION_PROMPTS",
     "ANALYSIS_PROMPTS",
     "VALIDATION_PROMPTS",
+    # Domain-specific prompts
+    "DOMAINS",
+    "DomainConfig",
+    "DomainPromptTemplate",
+    "get_domain",
+    "list_domains",
+    "generate_experiment_prompts",
     # Test data
     "VERBOSITY_QUERIES",
     "SHORT_CONTEXT",

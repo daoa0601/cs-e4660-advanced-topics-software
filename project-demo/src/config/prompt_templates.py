@@ -1,0 +1,1106 @@
+"""
+Prompt Template System for Domain-Specific LLM Cost Experiments
+
+This module provides a flexible template system for generating domain-specific
+prompts and test inputs for LLM cost analysis experiments.
+
+Supported domains:
+- coding: Software development, debugging, code review
+- biology: Molecular biology, genetics, biochemistry
+- legal: Contract analysis, compliance, legal research
+- creative: Writing, storytelling, content creation
+- finance: Financial analysis, trading, risk assessment
+- medical: Clinical reasoning, diagnosis, treatment planning
+- general: General knowledge and reasoning tasks
+"""
+
+import random
+import json
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+
+
+@dataclass
+class PromptTemplate:
+    """A single prompt template with variables."""
+    name: str
+    template: str
+    variables: Dict[str, List[str]]
+    difficulty: str = "medium"  # easy, medium, hard
+    expected_output_length: str = "medium"  # short, medium, long
+    
+    def generate(self, seed: Optional[int] = None) -> str:
+        """Generate a concrete prompt from this template."""
+        if seed is not None:
+            random.seed(seed)
+        
+        prompt = self.template
+        for var_name, options in self.variables.items():
+            placeholder = f"{{{var_name}}}"
+            if placeholder in prompt:
+                prompt = prompt.replace(placeholder, random.choice(options))
+        return prompt
+
+
+@dataclass
+class DomainConfig:
+    """Configuration for a specific domain."""
+    name: str
+    description: str
+    templates: List[PromptTemplate]
+    system_prompts: Dict[str, str] = field(default_factory=dict)
+    evaluation_criteria: List[str] = field(default_factory=list)
+    
+    def get_template(self, name: str) -> Optional[PromptTemplate]:
+        """Get a specific template by name."""
+        for t in self.templates:
+            if t.name == name:
+                return t
+        return None
+    
+    def generate_prompts(self, n: int, seed: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Generate n random prompts from this domain."""
+        if seed is not None:
+            random.seed(seed)
+        
+        prompts = []
+        for i in range(n):
+            template = random.choice(self.templates)
+            prompts.append({
+                "domain": self.name,
+                "template_name": template.name,
+                "prompt": template.generate(seed=seed + i if seed else None),
+                "difficulty": template.difficulty,
+                "expected_output_length": template.expected_output_length,
+            })
+        return prompts
+
+
+# =============================================================================
+# CODING DOMAIN
+# =============================================================================
+
+CODING_TEMPLATES = [
+    PromptTemplate(
+        name="debug_error",
+        template="I'm getting a {error_type} in my {language} code. The error occurs when {scenario}. Here's the relevant code:\n\n```{language}\n{code_snippet}\n```\n\nWhat's causing this error and how do I fix it?",
+        variables={
+            "error_type": [
+                "TypeError", "NullPointerException", "IndexError", "KeyError",
+                "SegmentationFault", "MemoryError", "RecursionError", "ValueError"
+            ],
+            "language": ["Python", "JavaScript", "Java", "C++", "Go", "Rust", "TypeScript"],
+            "scenario": [
+                "processing a list of user inputs",
+                "connecting to a database",
+                "parsing JSON from an API response",
+                "handling file I/O operations",
+                "implementing a recursive algorithm",
+                "managing concurrent threads",
+                "serializing objects for caching"
+            ],
+            "code_snippet": [
+                "def process(items):\n    for item in items:\n        result = item.value / item.count\n    return result",
+                "async function fetchData(url) {\n    const response = await fetch(url);\n    return response.json().data.items;\n}",
+                "public void processQueue() {\n    while (!queue.isEmpty()) {\n        Item item = queue.poll();\n        item.process();\n    }\n}",
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="code_review",
+        template="Please review this {language} code for {review_focus}:\n\n```{language}\n{code_snippet}\n```\n\nProvide specific suggestions for improvement.",
+        variables={
+            "language": ["Python", "JavaScript", "Java", "Go", "TypeScript", "Rust"],
+            "review_focus": [
+                "security vulnerabilities",
+                "performance optimization",
+                "code readability and maintainability",
+                "error handling and edge cases",
+                "memory management",
+                "concurrency issues",
+                "API design best practices"
+            ],
+            "code_snippet": [
+                "def authenticate(username, password):\n    query = f\"SELECT * FROM users WHERE username='{username}' AND password='{password}'\"\n    return db.execute(query)",
+                "function processItems(items) {\n    let results = [];\n    for (let i = 0; i < items.length; i++) {\n        results.push(heavyComputation(items[i]));\n    }\n    return results;\n}",
+                "class DataProcessor:\n    def __init__(self):\n        self.cache = {}\n    def process(self, key):\n        if key not in self.cache:\n            self.cache[key] = expensive_operation(key)\n        return self.cache[key]",
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="implement_algorithm",
+        template="Implement a {algorithm} in {language}. The algorithm should {requirements}. Include proper error handling and comments explaining the logic.",
+        variables={
+            "algorithm": [
+                "binary search tree", "hash map with collision handling",
+                "LRU cache", "priority queue", "trie for autocomplete",
+                "graph traversal (BFS/DFS)", "merge sort", "rate limiter",
+                "bloom filter", "consistent hashing"
+            ],
+            "language": ["Python", "JavaScript", "Java", "Go", "C++", "Rust"],
+            "requirements": [
+                "handle edge cases gracefully",
+                "be optimized for memory efficiency",
+                "support concurrent access",
+                "include comprehensive unit tests",
+                "follow the language's idiomatic patterns",
+                "have O(log n) time complexity for lookups"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="explain_concept",
+        template="Explain {concept} in {language} programming. Include a practical example showing when and how to use it.",
+        variables={
+            "concept": [
+                "closures", "decorators", "generators", "async/await",
+                "dependency injection", "the observer pattern",
+                "memory management", "type inference", "metaprogramming",
+                "functional programming principles"
+            ],
+            "language": ["Python", "JavaScript", "Java", "Go", "TypeScript", "Rust", "C++"]
+        },
+        difficulty="easy",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="system_design",
+        template="Design a {system_type} that can handle {scale}. Describe the architecture, key components, data flow, and how you would handle {challenge}.",
+        variables={
+            "system_type": [
+                "URL shortening service", "real-time chat application",
+                "distributed task queue", "content delivery network",
+                "recommendation engine", "rate limiting service",
+                "event streaming platform", "search autocomplete system"
+            ],
+            "scale": [
+                "10 million daily active users",
+                "100,000 requests per second",
+                "petabytes of data",
+                "global distribution across 5 continents",
+                "99.99% uptime requirements"
+            ],
+            "challenge": [
+                "database sharding", "cache invalidation",
+                "handling network partitions", "data consistency",
+                "hot spots and load balancing", "disaster recovery"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+]
+
+CODING_DOMAIN = DomainConfig(
+    name="coding",
+    description="Software development, debugging, code review, and system design",
+    templates=CODING_TEMPLATES,
+    system_prompts={
+        "expert": "You are a senior software engineer with 15+ years of experience across multiple languages and paradigms. Provide detailed, production-ready solutions.",
+        "mentor": "You are a patient programming mentor. Explain concepts clearly and help the user understand not just what to do, but why.",
+        "reviewer": "You are a thorough code reviewer focused on security, performance, and maintainability. Be constructive but direct about issues."
+    },
+    evaluation_criteria=[
+        "correctness", "code_quality", "explanation_clarity",
+        "best_practices", "security_awareness", "performance_consideration"
+    ]
+)
+
+
+# =============================================================================
+# BIOLOGY DOMAIN
+# =============================================================================
+
+BIOLOGY_TEMPLATES = [
+    PromptTemplate(
+        name="molecular_mechanism",
+        template="Explain the molecular mechanism of {process} in {organism_type}. Include the key proteins, signaling pathways, and regulatory elements involved.",
+        variables={
+            "process": [
+                "DNA replication", "transcription initiation", "mRNA splicing",
+                "protein folding", "apoptosis", "cell cycle regulation",
+                "immune response activation", "synaptic transmission",
+                "hormone signaling", "circadian rhythm regulation"
+            ],
+            "organism_type": [
+                "eukaryotic cells", "prokaryotes", "mammalian neurons",
+                "plant cells", "yeast", "human immune cells"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="experimental_design",
+        template="Design an experiment to test the hypothesis that {hypothesis}. Include controls, expected results, and potential pitfalls.",
+        variables={
+            "hypothesis": [
+                "gene X regulates cell proliferation through the PI3K pathway",
+                "protein Y is essential for mitochondrial function",
+                "microRNA-Z targets tumor suppressor genes",
+                "environmental factor W affects epigenetic modifications",
+                "compound V can cross the blood-brain barrier",
+                "enzyme Q has allosteric regulation sites"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="interpret_results",
+        template="I ran a {technique} experiment studying {target}. My results show {observation}. What does this suggest and what follow-up experiments would you recommend?",
+        variables={
+            "technique": [
+                "Western blot", "qPCR", "CRISPR knockout", "ChIP-seq",
+                "flow cytometry", "mass spectrometry", "RNA-seq",
+                "immunofluorescence", "co-immunoprecipitation"
+            ],
+            "target": [
+                "p53 expression in cancer cells",
+                "CREB phosphorylation in neurons",
+                "histone modifications during differentiation",
+                "protein-protein interactions in the nucleus",
+                "metabolic flux in stressed cells"
+            ],
+            "observation": [
+                "a 3-fold increase compared to control",
+                "no significant change despite treatment",
+                "unexpected bands at higher molecular weights",
+                "bimodal distribution in the cell population",
+                "correlation with cell cycle stage"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="compare_pathways",
+        template="Compare and contrast {pathway1} and {pathway2}. Discuss their regulation, cross-talk, and roles in {context}.",
+        variables={
+            "pathway1": [
+                "MAPK/ERK signaling", "Wnt/β-catenin pathway",
+                "NF-κB pathway", "JAK-STAT signaling", "TGF-β signaling"
+            ],
+            "pathway2": [
+                "PI3K/AKT pathway", "Hedgehog signaling",
+                "Notch signaling", "mTOR pathway", "Hippo pathway"
+            ],
+            "context": [
+                "cancer progression", "stem cell maintenance",
+                "immune response", "metabolic regulation",
+                "tissue development", "cellular stress response"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="drug_mechanism",
+        template="Explain how {drug_class} drugs work at the molecular level. Include their targets, mechanism of action, and common side effects related to their mechanism.",
+        variables={
+            "drug_class": [
+                "SSRI antidepressants", "tyrosine kinase inhibitors",
+                "PD-1/PD-L1 checkpoint inhibitors", "SGLT2 inhibitors",
+                "mRNA vaccines", "CRISPR-based therapeutics",
+                "monoclonal antibodies", "CAR-T cell therapies"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+]
+
+BIOLOGY_DOMAIN = DomainConfig(
+    name="biology",
+    description="Molecular biology, genetics, biochemistry, and experimental design",
+    templates=BIOLOGY_TEMPLATES,
+    system_prompts={
+        "expert": "You are a molecular biology professor with expertise in cell signaling and genetics. Provide detailed, accurate scientific explanations.",
+        "researcher": "You are a research scientist helping to design and interpret experiments. Be thorough about controls and potential confounds.",
+        "educator": "You are a biology educator making complex concepts accessible while maintaining scientific accuracy."
+    },
+    evaluation_criteria=[
+        "scientific_accuracy", "mechanistic_detail", "pathway_knowledge",
+        "experimental_rigor", "citation_awareness", "clinical_relevance"
+    ]
+)
+
+
+# =============================================================================
+# LEGAL DOMAIN
+# =============================================================================
+
+LEGAL_TEMPLATES = [
+    PromptTemplate(
+        name="contract_analysis",
+        template="Analyze this {contract_type} clause for potential issues:\n\n\"{clause}\"\n\nIdentify any ambiguities, missing provisions, or terms that favor one party unfairly.",
+        variables={
+            "contract_type": [
+                "employment", "software licensing", "non-disclosure",
+                "service agreement", "partnership", "lease",
+                "merger and acquisition", "supply chain"
+            ],
+            "clause": [
+                "The Employee agrees to assign all intellectual property created during employment, including any work done outside regular hours using personal equipment.",
+                "Either party may terminate this agreement with 30 days notice. Upon termination, all fees paid are non-refundable regardless of services rendered.",
+                "The Vendor shall indemnify the Client against all claims arising from the use of the software, without limitation as to amount or type of damages.",
+                "Confidential Information shall include all information disclosed by either party, whether marked confidential or not, for a period of 5 years following disclosure.",
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="regulatory_compliance",
+        template="What are the key {regulation} compliance requirements for a {business_type}? Include documentation requirements, deadlines, and potential penalties for non-compliance.",
+        variables={
+            "regulation": [
+                "GDPR", "HIPAA", "SOX", "PCI-DSS", "CCPA",
+                "AML/KYC", "FDA", "SEC", "OSHA", "EPA"
+            ],
+            "business_type": [
+                "healthcare startup", "fintech company", "e-commerce platform",
+                "pharmaceutical manufacturer", "data analytics firm",
+                "financial services provider", "SaaS company"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="legal_comparison",
+        template="Compare the legal frameworks for {topic} in {jurisdiction1} versus {jurisdiction2}. What are the key differences a business should be aware of?",
+        variables={
+            "topic": [
+                "data privacy", "employment discrimination",
+                "intellectual property protection", "corporate taxation",
+                "consumer protection", "environmental liability"
+            ],
+            "jurisdiction1": ["United States", "European Union", "United Kingdom", "California"],
+            "jurisdiction2": ["European Union", "China", "United Kingdom", "Singapore", "Germany"]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="case_analysis",
+        template="Analyze a hypothetical case where {scenario}. What legal theories might apply, what evidence would be relevant, and what would be the likely outcome?",
+        variables={
+            "scenario": [
+                "an employee is terminated after reporting safety violations",
+                "a company's AI system makes discriminatory hiring recommendations",
+                "a startup is accused of misappropriating trade secrets from a former employer",
+                "a social media platform fails to remove defamatory content",
+                "a contractor exceeds the scope of work specified in the agreement"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="draft_clause",
+        template="Draft a {clause_type} clause for a {contract_context}. The clause should be balanced, clear, and enforceable.",
+        variables={
+            "clause_type": [
+                "limitation of liability", "force majeure",
+                "dispute resolution", "non-compete",
+                "data protection", "termination for convenience",
+                "change of control", "most favored nation"
+            ],
+            "contract_context": [
+                "B2B SaaS agreement", "employment contract for executives",
+                "joint venture agreement", "franchise agreement",
+                "technology licensing deal", "consulting services agreement"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+]
+
+LEGAL_DOMAIN = DomainConfig(
+    name="legal",
+    description="Contract analysis, regulatory compliance, and legal research",
+    templates=LEGAL_TEMPLATES,
+    system_prompts={
+        "expert": "You are a corporate attorney with expertise in contracts and regulatory compliance. Provide practical, actionable legal analysis. Note that this is general information, not legal advice.",
+        "analyst": "You are a legal analyst helping to identify risks and compliance issues. Be thorough and flag potential concerns.",
+        "drafter": "You are a contract drafting specialist focused on clear, enforceable language that protects your client while remaining fair."
+    },
+    evaluation_criteria=[
+        "legal_accuracy", "practical_applicability", "risk_identification",
+        "jurisdictional_awareness", "clarity_of_language", "balance_of_interests"
+    ]
+)
+
+
+# =============================================================================
+# CREATIVE WRITING DOMAIN
+# =============================================================================
+
+CREATIVE_TEMPLATES = [
+    PromptTemplate(
+        name="story_opening",
+        template="Write the opening scene of a {genre} story set in {setting}. The protagonist is {character}. Create tension and hook the reader immediately.",
+        variables={
+            "genre": [
+                "science fiction", "fantasy", "thriller", "literary fiction",
+                "horror", "romance", "mystery", "historical fiction"
+            ],
+            "setting": [
+                "a space station orbiting a dying star",
+                "a medieval kingdom on the brink of war",
+                "modern-day Tokyo during a blackout",
+                "a small coastal town with a dark secret",
+                "post-apocalyptic New York",
+                "Victorian London's underworld"
+            ],
+            "character": [
+                "a disgraced scientist seeking redemption",
+                "a young orphan who discovers hidden powers",
+                "a detective haunted by an unsolved case",
+                "an AI becoming aware of its own existence",
+                "a chef whose restaurant is failing",
+                "a time traveler stuck in the wrong era"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="dialogue_scene",
+        template="Write a dialogue-heavy scene where {character1} confronts {character2} about {conflict}. Show their personalities through how they speak.",
+        variables={
+            "character1": [
+                "an idealistic young activist",
+                "a cynical veteran detective",
+                "a nervous first-time parent",
+                "a confident CEO",
+                "an elderly professor"
+            ],
+            "character2": [
+                "their estranged sibling",
+                "a corrupt politician",
+                "their rebellious teenager",
+                "a whistleblower employee",
+                "their former mentor"
+            ],
+            "conflict": [
+                "a betrayal of trust",
+                "a life-changing decision",
+                "a hidden truth coming to light",
+                "competing visions for the future",
+                "an old wound that never healed"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="world_building",
+        template="Create a detailed description of {element} in a {world_type} setting. Include sensory details and cultural significance.",
+        variables={
+            "element": [
+                "a bustling marketplace", "a sacred temple",
+                "a forbidden technology", "a unique form of magic",
+                "a coming-of-age ritual", "an underground resistance hideout",
+                "a grand festival", "a prison designed for the powerful"
+            ],
+            "world_type": [
+                "cyberpunk dystopia", "high fantasy realm",
+                "steampunk alternate history", "post-climate-change Earth",
+                "interstellar civilization", "urban fantasy modern world"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="rewrite_style",
+        template="Rewrite this passage in the style of {author}:\n\n\"{passage}\"\n\nCapture their distinctive voice, sentence structure, and thematic concerns.",
+        variables={
+            "author": [
+                "Ernest Hemingway", "Virginia Woolf", "Gabriel García Márquez",
+                "Toni Morrison", "Haruki Murakami", "Jane Austen",
+                "Cormac McCarthy", "Ursula K. Le Guin"
+            ],
+            "passage": [
+                "She walked into the room and saw him sitting there. He looked up. Neither spoke for a long moment. Then she said she was leaving.",
+                "The city spread out below, millions of lights flickering like stars that had fallen to earth. He wondered if anyone down there was as lonely as he was.",
+                "The old house had stood empty for years. Everyone in town said it was haunted, but Maria didn't believe in ghosts. She believed in answers."
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="poem_creation",
+        template="Write a {poem_type} about {theme}. Pay attention to {poetic_element}.",
+        variables={
+            "poem_type": [
+                "sonnet", "free verse poem", "haiku sequence",
+                "villanelle", "prose poem", "narrative poem"
+            ],
+            "theme": [
+                "the passage of time", "grief and healing",
+                "technology and humanity", "nature's indifference",
+                "memory and identity", "love in the modern age"
+            ],
+            "poetic_element": [
+                "imagery and sensory detail",
+                "rhythm and sound",
+                "metaphor and symbolism",
+                "line breaks and white space",
+                "voice and perspective"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="medium"
+    ),
+]
+
+CREATIVE_DOMAIN = DomainConfig(
+    name="creative",
+    description="Creative writing, storytelling, poetry, and narrative craft",
+    templates=CREATIVE_TEMPLATES,
+    system_prompts={
+        "author": "You are a skilled fiction writer with a distinctive voice. Create vivid, emotionally resonant prose that engages readers.",
+        "editor": "You are a developmental editor helping to craft stronger narratives. Provide creative suggestions while respecting the writer's vision.",
+        "poet": "You are a poet with deep appreciation for language, sound, and form. Create work that rewards close reading."
+    },
+    evaluation_criteria=[
+        "creativity", "voice_consistency", "emotional_impact",
+        "technical_craft", "originality", "narrative_coherence"
+    ]
+)
+
+
+# =============================================================================
+# FINANCE DOMAIN
+# =============================================================================
+
+FINANCE_TEMPLATES = [
+    PromptTemplate(
+        name="financial_analysis",
+        template="Analyze the financial health of a hypothetical {company_type} with the following metrics: {metrics}. What are the key concerns and strengths?",
+        variables={
+            "company_type": [
+                "SaaS startup", "retail chain", "manufacturing company",
+                "bank", "real estate investment trust", "pharmaceutical company"
+            ],
+            "metrics": [
+                "Revenue: $50M (up 40% YoY), Net Income: -$10M, Burn rate: $2M/month, Cash: $30M",
+                "Revenue: $200M (flat YoY), EBITDA margin: 15%, Debt/Equity: 2.5, Current ratio: 0.8",
+                "Revenue: $500M (down 10% YoY), Gross margin: 35%, Inventory turnover: 3x, DSO: 65 days",
+                "AUM: $10B, Fee income: $80M, Cost/Income ratio: 75%, NIM: 2.5%"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="valuation_method",
+        template="Explain how to value a {asset_type} using {valuation_method}. What are the key inputs, assumptions, and limitations of this approach?",
+        variables={
+            "asset_type": [
+                "pre-revenue tech startup", "mature dividend-paying stock",
+                "commercial real estate property", "cryptocurrency token",
+                "private equity portfolio company", "distressed debt"
+            ],
+            "valuation_method": [
+                "DCF analysis", "comparable company analysis",
+                "precedent transactions", "venture capital method",
+                "cap rate approach", "liquidation value"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="risk_assessment",
+        template="Assess the risks of {investment_scenario}. Categorize risks by type and suggest mitigation strategies.",
+        variables={
+            "investment_scenario": [
+                "investing in emerging market government bonds",
+                "launching a leveraged buyout of a cyclical business",
+                "building a portfolio concentrated in tech stocks",
+                "investing in a pre-IPO unicorn startup",
+                "entering a currency carry trade strategy",
+                "investing in commercial mortgage-backed securities"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="market_analysis",
+        template="Analyze the current state of the {market} market. Discuss key drivers, trends, and potential scenarios for the next {timeframe}.",
+        variables={
+            "market": [
+                "US equity", "corporate bond", "cryptocurrency",
+                "commercial real estate", "foreign exchange",
+                "commodities", "private credit"
+            ],
+            "timeframe": ["6 months", "1 year", "3 years"]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="explain_instrument",
+        template="Explain how {instrument} works, including their use cases, pricing factors, and risks. Provide a simple example.",
+        variables={
+            "instrument": [
+                "interest rate swaps", "credit default swaps",
+                "convertible bonds", "options strategies (straddles/strangles)",
+                "structured products", "total return swaps",
+                "futures contracts", "mortgage-backed securities"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+]
+
+FINANCE_DOMAIN = DomainConfig(
+    name="finance",
+    description="Financial analysis, valuation, risk assessment, and market analysis",
+    templates=FINANCE_TEMPLATES,
+    system_prompts={
+        "analyst": "You are a senior financial analyst with expertise in valuation and risk assessment. Provide thorough, data-driven analysis.",
+        "advisor": "You are a financial advisor helping clients understand complex financial concepts. Be clear about risks and assumptions.",
+        "quant": "You are a quantitative analyst focused on modeling and risk measurement. Be precise about methodologies and limitations."
+    },
+    evaluation_criteria=[
+        "analytical_rigor", "financial_accuracy", "risk_awareness",
+        "practical_applicability", "assumption_clarity", "market_knowledge"
+    ]
+)
+
+
+# =============================================================================
+# MEDICAL DOMAIN
+# =============================================================================
+
+MEDICAL_TEMPLATES = [
+    PromptTemplate(
+        name="differential_diagnosis",
+        template="A {patient_demographic} presents with {symptoms}. Develop a differential diagnosis, explain your reasoning, and suggest initial workup.",
+        variables={
+            "patient_demographic": [
+                "45-year-old male", "28-year-old female",
+                "72-year-old female", "8-year-old child",
+                "35-year-old pregnant woman", "60-year-old diabetic male"
+            ],
+            "symptoms": [
+                "acute chest pain radiating to the left arm, diaphoresis, and nausea",
+                "progressive fatigue, weight loss, and night sweats over 3 months",
+                "sudden onset severe headache described as 'the worst of my life'",
+                "recurrent abdominal pain, bloating, and alternating diarrhea/constipation",
+                "joint pain, morning stiffness, and a butterfly-shaped facial rash",
+                "progressive shortness of breath and a dry cough over 6 weeks"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="treatment_plan",
+        template="Outline a treatment plan for a patient with {condition}. Consider {patient_factors}. Include first-line and alternative approaches.",
+        variables={
+            "condition": [
+                "newly diagnosed Type 2 diabetes",
+                "moderate major depressive disorder",
+                "stage IIIA non-small cell lung cancer",
+                "chronic heart failure with reduced ejection fraction",
+                "rheumatoid arthritis with inadequate response to methotrexate",
+                "treatment-resistant hypertension"
+            ],
+            "patient_factors": [
+                "age 65, with CKD stage 3",
+                "pregnancy in first trimester",
+                "previous adverse reaction to first-line medications",
+                "limited financial resources and insurance",
+                "strong preference for non-pharmacological approaches",
+                "multiple comorbidities including obesity and sleep apnea"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="interpret_results",
+        template="Interpret these {test_type} results for a patient with {clinical_context}:\n\n{results}\n\nWhat do these findings suggest and what would you recommend next?",
+        variables={
+            "test_type": ["lab", "imaging", "ECG", "pulmonary function"],
+            "clinical_context": [
+                "suspected acute coronary syndrome",
+                "workup for anemia",
+                "monitoring of anticoagulation therapy",
+                "evaluation of thyroid dysfunction",
+                "screening for diabetes complications"
+            ],
+            "results": [
+                "Troponin I: 0.15 ng/mL (normal <0.04), CK-MB: 8.5 ng/mL, BNP: 450 pg/mL",
+                "Hgb: 9.2 g/dL, MCV: 68 fL, Ferritin: 8 ng/mL, TIBC: 450 μg/dL",
+                "TSH: 8.5 mIU/L, Free T4: 0.6 ng/dL, Anti-TPO antibodies: positive",
+                "HbA1c: 8.9%, Fasting glucose: 185 mg/dL, Urine albumin/creatinine ratio: 45 mg/g"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="drug_interaction",
+        template="Evaluate potential interactions between {drug1} and {drug2} in a patient with {patient_context}. What monitoring or adjustments would you recommend?",
+        variables={
+            "drug1": [
+                "warfarin", "metformin", "lisinopril",
+                "sertraline", "atorvastatin", "metoprolol"
+            ],
+            "drug2": [
+                "amiodarone", "fluconazole", "NSAIDs",
+                "tramadol", "clarithromycin", "potassium supplements"
+            ],
+            "patient_context": [
+                "atrial fibrillation and recent joint replacement",
+                "diabetes and recurrent fungal infections",
+                "heart failure and chronic pain",
+                "depression and chronic pain management"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="patient_education",
+        template="Create patient education materials explaining {topic} for a patient who {patient_characteristic}. Use clear, accessible language.",
+        variables={
+            "topic": [
+                "how to use an insulin pen",
+                "warning signs of stroke",
+                "managing chronic pain without opioids",
+                "preparing for colonoscopy",
+                "lifestyle modifications for heart health",
+                "understanding their cancer treatment options"
+            ],
+            "patient_characteristic": [
+                "has limited health literacy",
+                "is elderly and lives alone",
+                "has young children and limited time",
+                "is anxious about their diagnosis",
+                "has cultural beliefs that affect treatment acceptance"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+]
+
+MEDICAL_DOMAIN = DomainConfig(
+    name="medical",
+    description="Clinical reasoning, diagnosis, treatment planning, and patient education",
+    templates=MEDICAL_TEMPLATES,
+    system_prompts={
+        "physician": "You are an experienced physician providing clinical reasoning. Be thorough but note this is for educational purposes, not actual medical advice.",
+        "educator": "You are a medical educator helping students understand clinical decision-making. Explain your reasoning process clearly.",
+        "consultant": "You are a specialist consultant providing detailed analysis of complex cases. Consider evidence-based guidelines and patient-specific factors."
+    },
+    evaluation_criteria=[
+        "clinical_accuracy", "reasoning_quality", "safety_awareness",
+        "evidence_basis", "patient_centeredness", "practical_applicability"
+    ]
+)
+
+
+# =============================================================================
+# GENERAL DOMAIN
+# =============================================================================
+
+GENERAL_TEMPLATES = [
+    PromptTemplate(
+        name="explain_concept",
+        template="Explain {concept} to someone with {audience_level} background. Use analogies and examples to make it clear.",
+        variables={
+            "concept": [
+                "how machine learning works",
+                "the theory of relativity",
+                "how the stock market functions",
+                "the scientific method",
+                "how vaccines work",
+                "the basics of climate change",
+                "how encryption protects data",
+                "the principles of evolution"
+            ],
+            "audience_level": [
+                "no technical", "a high school",
+                "a college", "an expert"
+            ]
+        },
+        difficulty="easy",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="compare_contrast",
+        template="Compare and contrast {item1} and {item2}. Discuss their similarities, differences, and when you might choose one over the other.",
+        variables={
+            "item1": [
+                "renewable and non-renewable energy",
+                "capitalism and socialism",
+                "iOS and Android",
+                "traditional and digital marketing",
+                "public and private education"
+            ],
+            "item2": [
+                "their economic implications",
+                "their environmental impact",
+                "their social effects",
+                "their practical applications",
+                "their long-term sustainability"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="problem_solve",
+        template="Help me solve this problem: {problem}. Walk through your reasoning step by step.",
+        variables={
+            "problem": [
+                "I need to organize a team event for 50 people with a budget of $2000",
+                "I'm trying to decide between two job offers with different trade-offs",
+                "I want to learn a new skill but have limited time each week",
+                "I need to have a difficult conversation with a colleague about their performance",
+                "I'm trying to reduce my environmental footprint without major lifestyle changes"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="medium"
+    ),
+    PromptTemplate(
+        name="summarize",
+        template="Summarize the key points of {topic}. Provide a balanced overview covering main arguments and counterarguments.",
+        variables={
+            "topic": [
+                "the debate over universal basic income",
+                "the pros and cons of remote work",
+                "arguments for and against nuclear energy",
+                "the impact of social media on mental health",
+                "the future of artificial intelligence",
+                "the cryptocurrency and blockchain debate"
+            ]
+        },
+        difficulty="medium",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="analyze_situation",
+        template="Analyze this situation: {situation}. What are the key factors to consider and what would you recommend?",
+        variables={
+            "situation": [
+                "A company is deciding whether to expand internationally or focus on domestic growth",
+                "A city is considering banning cars from the downtown area",
+                "A university is debating whether to make standardized tests optional for admissions",
+                "A family is deciding whether to rent or buy a home in the current market",
+                "A nonprofit is choosing between two different approaches to achieve their mission"
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+]
+
+GENERAL_DOMAIN = DomainConfig(
+    name="general",
+    description="General knowledge, reasoning, and problem-solving tasks",
+    templates=GENERAL_TEMPLATES,
+    system_prompts={
+        "assistant": "You are a knowledgeable assistant helping to explain concepts and solve problems. Be clear, balanced, and thorough.",
+        "teacher": "You are a patient teacher helping someone learn. Break down complex ideas and check for understanding.",
+        "advisor": "You are a thoughtful advisor helping with decisions. Present multiple perspectives and help weigh trade-offs."
+    },
+    evaluation_criteria=[
+        "accuracy", "clarity", "completeness",
+        "balanced_perspective", "practical_usefulness", "reasoning_quality"
+    ]
+)
+
+
+# =============================================================================
+# DOMAIN REGISTRY
+# =============================================================================
+
+DOMAINS: Dict[str, DomainConfig] = {
+    "coding": CODING_DOMAIN,
+    "biology": BIOLOGY_DOMAIN,
+    "legal": LEGAL_DOMAIN,
+    "creative": CREATIVE_DOMAIN,
+    "finance": FINANCE_DOMAIN,
+    "medical": MEDICAL_DOMAIN,
+    "general": GENERAL_DOMAIN,
+}
+
+
+def get_domain(name: str) -> Optional[DomainConfig]:
+    """Get a domain configuration by name."""
+    return DOMAINS.get(name.lower())
+
+
+def list_domains() -> List[str]:
+    """List all available domain names."""
+    return list(DOMAINS.keys())
+
+
+def generate_experiment_prompts(
+    domain: str,
+    n_prompts: int = 20,
+    seed: Optional[int] = None,
+    difficulty_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Generate prompts for an experiment from a specific domain.
+    
+    Args:
+        domain: The domain name (coding, biology, legal, etc.)
+        n_prompts: Number of prompts to generate
+        seed: Random seed for reproducibility
+        difficulty_filter: Optional filter for difficulty (easy, medium, hard)
+    
+    Returns:
+        List of prompt dictionaries with metadata
+    """
+    domain_config = get_domain(domain)
+    if domain_config is None:
+        raise ValueError(f"Unknown domain: {domain}. Available: {list_domains()}")
+    
+    if difficulty_filter:
+        # Filter templates by difficulty
+        filtered_templates = [
+            t for t in domain_config.templates
+            if t.difficulty == difficulty_filter
+        ]
+        if not filtered_templates:
+            raise ValueError(f"No templates with difficulty '{difficulty_filter}' in domain '{domain}'")
+        
+        # Create temporary domain config with filtered templates
+        filtered_domain = DomainConfig(
+            name=domain_config.name,
+            description=domain_config.description,
+            templates=filtered_templates,
+            system_prompts=domain_config.system_prompts,
+            evaluation_criteria=domain_config.evaluation_criteria
+        )
+        return filtered_domain.generate_prompts(n_prompts, seed)
+    
+    return domain_config.generate_prompts(n_prompts, seed)
+
+
+def save_prompts_to_file(prompts: List[Dict[str, Any]], filepath: str) -> None:
+    """Save generated prompts to a JSON file."""
+    with open(filepath, 'w') as f:
+        json.dump(prompts, f, indent=2)
+
+
+def load_prompts_from_file(filepath: str) -> List[Dict[str, Any]]:
+    """Load prompts from a JSON file."""
+    with open(filepath, 'r') as f:
+        return json.load(f)
+
+
+# =============================================================================
+# CLI INTERFACE
+# =============================================================================
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description="Generate domain-specific prompts for LLM cost experiments"
+    )
+    parser.add_argument(
+        "--domain", "-d",
+        choices=list_domains(),
+        help="Domain to generate prompts from"
+    )
+    parser.add_argument(
+        "--count", "-n",
+        type=int,
+        default=20,
+        help="Number of prompts to generate (default: 20)"
+    )
+    parser.add_argument(
+        "--seed", "-s",
+        type=int,
+        default=None,
+        help="Random seed for reproducibility"
+    )
+    parser.add_argument(
+        "--difficulty",
+        choices=["easy", "medium", "hard"],
+        default=None,
+        help="Filter by difficulty level"
+    )
+    parser.add_argument(
+        "--output", "-o",
+        type=str,
+        default=None,
+        help="Output file path (JSON format)"
+    )
+    parser.add_argument(
+        "--list-templates",
+        action="store_true",
+        help="List available templates for the domain"
+    )
+    parser.add_argument(
+        "--list-domains",
+        action="store_true",
+        help="List all available domains"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.list_domains:
+        print("Available domains:")
+        for name in list_domains():
+            domain = get_domain(name)
+            print(f"  {name}: {domain.description}")
+        exit(0)
+    
+    if not args.domain:
+        parser.error("--domain is required unless using --list-domains")
+    
+    if args.list_templates:
+        domain = get_domain(args.domain)
+        print(f"\nTemplates for '{args.domain}' domain:")
+        print("-" * 50)
+        for t in domain.templates:
+            print(f"  {t.name} ({t.difficulty})")
+            print(f"    Expected output: {t.expected_output_length}")
+        exit(0)
+    
+    # Generate prompts
+    prompts = generate_experiment_prompts(
+        domain=args.domain,
+        n_prompts=args.count,
+        seed=args.seed,
+        difficulty_filter=args.difficulty
+    )
+    
+    if args.output:
+        save_prompts_to_file(prompts, args.output)
+        print(f"Saved {len(prompts)} prompts to {args.output}")
+    else:
+        print(f"\nGenerated {len(prompts)} prompts for '{args.domain}' domain:\n")
+        for i, p in enumerate(prompts[:5], 1):  # Show first 5
+            print(f"--- Prompt {i} ({p['template_name']}, {p['difficulty']}) ---")
+            print(p['prompt'][:300] + "..." if len(p['prompt']) > 300 else p['prompt'])
+            print()
+        if len(prompts) > 5:
+            print(f"... and {len(prompts) - 5} more prompts")

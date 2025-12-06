@@ -1,13 +1,23 @@
 """
-Vertex AI API client wrapper with streaming support.
+Google GenAI Gemini Client with ADC Support.
+
+This module provides the primary interface for interacting with Gemini models
+using the google-genai SDK with Vertex AI backend and Application Default
+Credentials (ADC).
+
+Features:
+- Automatic ADC authentication (no API key needed)
+- Streaming support with TTFT metrics
+- Multi-turn conversation support
+- Compatible response interface with legacy vertex.py
 """
 
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List, Dict
 
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from google import genai
+from google.genai import types
 
 from ..config import GCP_PROJECT_ID, GCP_REGION, get_model_id
 
@@ -35,43 +45,44 @@ class ModelResponse:
     streaming_metrics: Optional[StreamingMetrics] = None
 
 
-# Module-level initialization flag
-_initialized = False
+# Module-level client instance
+_client: Optional[genai.Client] = None
 
 
-def init_vertex_ai():
-    """Initialize Vertex AI SDK."""
-    global _initialized
-    if not _initialized:
+def _get_client() -> genai.Client:
+    """Get or create the GenAI client with Vertex AI backend."""
+    global _client
+    if _client is None:
         if not GCP_PROJECT_ID:
             raise ValueError("GCP_PROJECT_ID not set. Check your .env file.")
-        vertexai.init(project=GCP_PROJECT_ID, location=GCP_REGION)
-        _initialized = True
+        _client = genai.Client(
+            vertexai=True,
+            project=GCP_PROJECT_ID,
+            location=GCP_REGION
+        )
+    return _client
 
 
 def call_model(prompt: str, model: str, streaming: bool = False) -> ModelResponse:
     """
-    Call a Vertex AI model and return response with metrics.
+    Call a Gemini model and return response with metrics.
     
     Args:
         prompt: The input prompt to send to the model
-        model: Model identifier (e.g., 'flash', 'pro', 'gemini-2.0-flash')
+        model: Model identifier (e.g., 'flash', 'pro')
         streaming: If True, use streaming API and capture TTFT metrics
     
     Returns:
         ModelResponse with text, token counts, latency, and optional streaming metrics
     """
-    init_vertex_ai()
-    
+    client = _get_client()
     model_id = get_model_id(model)
     
     try:
-        generative_model = GenerativeModel(model_id)
-        
         if streaming:
-            return _call_model_streaming(generative_model, prompt, model_id)
+            return _call_model_streaming(client, prompt, model_id)
         else:
-            return _call_model_sync(generative_model, prompt, model_id)
+            return _call_model_sync(client, prompt, model_id)
         
     except Exception as e:
         return ModelResponse(
@@ -85,17 +96,22 @@ def call_model(prompt: str, model: str, streaming: bool = False) -> ModelRespons
         )
 
 
-def _call_model_sync(model: GenerativeModel, prompt: str, model_id: str) -> ModelResponse:
+def _call_model_sync(client: genai.Client, prompt: str, model_id: str) -> ModelResponse:
     """Synchronous (non-streaming) model call."""
     start_time = time.perf_counter()
-    response = model.generate_content(prompt)
-    end_time = time.perf_counter()
     
+    response = client.models.generate_content(
+        model=model_id,
+        contents=prompt,
+    )
+    
+    end_time = time.perf_counter()
     latency_ms = int((end_time - start_time) * 1000)
     
+    # Extract usage metadata
     usage = response.usage_metadata
-    input_tokens = usage.prompt_token_count
-    output_tokens = usage.candidates_token_count
+    input_tokens = usage.prompt_token_count if usage else 0
+    output_tokens = usage.candidates_token_count if usage else 0
     
     return ModelResponse(
         text=response.text,
@@ -107,14 +123,20 @@ def _call_model_sync(model: GenerativeModel, prompt: str, model_id: str) -> Mode
     )
 
 
-def _call_model_streaming(model: GenerativeModel, prompt: str, model_id: str) -> ModelResponse:
+def _call_model_streaming(
+    client: genai.Client, prompt: str, model_id: str
+) -> ModelResponse:
     """Streaming model call with TTFT metrics."""
     start_time = time.perf_counter()
     first_token_time = None
     chunks = []
     chunk_count = 0
     
-    response_stream = model.generate_content(prompt, stream=True)
+    # Use streaming generation
+    response_stream = client.models.generate_content_stream(
+        model=model_id,
+        contents=prompt,
+    )
     
     for chunk in response_stream:
         if first_token_time is None and chunk.text:
@@ -125,15 +147,19 @@ def _call_model_streaming(model: GenerativeModel, prompt: str, model_id: str) ->
     end_time = time.perf_counter()
     
     total_latency_ms = int((end_time - start_time) * 1000)
-    ttft_ms = int((first_token_time - start_time) * 1000) if first_token_time else total_latency_ms
+    ttft_ms = (
+        int((first_token_time - start_time) * 1000) 
+        if first_token_time else total_latency_ms
+    )
     
     full_text = "".join(chunk.text for chunk in chunks if chunk.text)
     
+    # Get usage from last chunk
     usage = chunks[-1].usage_metadata if chunks else None
     input_tokens = usage.prompt_token_count if usage else 0
     output_tokens = usage.candidates_token_count if usage else 0
     
-    duration_seconds = (end_time - start_time)
+    duration_seconds = end_time - start_time
     tokens_per_second = output_tokens / duration_seconds if duration_seconds > 0 else 0
     
     streaming_metrics = StreamingMetrics(
@@ -155,7 +181,7 @@ def _call_model_streaming(model: GenerativeModel, prompt: str, model_id: str) ->
 
 
 def call_model_with_history(
-    messages: list[dict], 
+    messages: List[Dict], 
     model: str,
     streaming: bool = False,
 ) -> ModelResponse:
@@ -170,39 +196,31 @@ def call_model_with_history(
     Returns:
         ModelResponse
     """
-    init_vertex_ai()
-    
+    client = _get_client()
     model_id = get_model_id(model)
     
     try:
-        generative_model = GenerativeModel(model_id)
-        
-        # Build history for chat (excluding last user message)
-        from vertexai.generative_models import Content, Part
-        
-        history = []
-        last_user_message = None
-        
-        for i, msg in enumerate(messages):
-            content = Content(
-                role=msg["role"],
-                parts=[Part.from_text(msg["content"])]
+        # Convert messages to genai format
+        contents = []
+        for msg in messages:
+            contents.append(
+                types.Content(
+                    role=msg["role"],
+                    parts=[types.Part.from_text(text=msg["content"])]
+                )
             )
-            if i == len(messages) - 1 and msg["role"] == "user":
-                last_user_message = msg["content"]
-            else:
-                history.append(content)
-        
-        chat = generative_model.start_chat(history=history)
         
         start_time = time.perf_counter()
         
-        if streaming and last_user_message:
+        if streaming:
             first_token_time = None
             chunks = []
             chunk_count = 0
             
-            response_stream = chat.send_message(last_user_message, stream=True)
+            response_stream = client.models.generate_content_stream(
+                model=model_id,
+                contents=contents,
+            )
             
             for chunk in response_stream:
                 if first_token_time is None and chunk.text:
@@ -214,13 +232,19 @@ def call_model_with_history(
             full_text = "".join(c.text for c in chunks if c.text)
             usage = chunks[-1].usage_metadata if chunks else None
             
-            ttft_ms = int((first_token_time - start_time) * 1000) if first_token_time else 0
+            ttft_ms = (
+                int((first_token_time - start_time) * 1000) 
+                if first_token_time else 0
+            )
             total_latency_ms = int((end_time - start_time) * 1000)
             
             input_tokens = usage.prompt_token_count if usage else 0
             output_tokens = usage.candidates_token_count if usage else 0
             
-            tokens_per_second = output_tokens / (end_time - start_time) if (end_time - start_time) > 0 else 0
+            tokens_per_second = (
+                output_tokens / (end_time - start_time) 
+                if (end_time - start_time) > 0 else 0
+            )
             
             return ModelResponse(
                 text=full_text,
@@ -236,28 +260,21 @@ def call_model_with_history(
                     chunk_count=chunk_count,
                 ),
             )
-        elif last_user_message:
-            response = chat.send_message(last_user_message)
+        else:
+            response = client.models.generate_content(
+                model=model_id,
+                contents=contents,
+            )
             end_time = time.perf_counter()
             
             usage = response.usage_metadata
             return ModelResponse(
                 text=response.text,
-                input_tokens=usage.prompt_token_count,
-                output_tokens=usage.candidates_token_count,
+                input_tokens=usage.prompt_token_count if usage else 0,
+                output_tokens=usage.candidates_token_count if usage else 0,
                 latency_ms=int((end_time - start_time) * 1000),
                 model=model_id,
                 success=True,
-            )
-        else:
-            return ModelResponse(
-                text="",
-                input_tokens=0,
-                output_tokens=0,
-                latency_ms=0,
-                model=model_id,
-                success=False,
-                error_message="No user message to respond to",
             )
             
     except Exception as e:
@@ -273,7 +290,7 @@ def call_model_with_history(
 
 
 def test_connection() -> bool:
-    """Test the Vertex AI connection with a minimal call."""
+    """Test the Gemini connection with a minimal call."""
     try:
         response = call_model("Say 'hello' in one word.", "flash")
         return response.success
@@ -297,7 +314,7 @@ def test_streaming() -> bool:
 
 
 if __name__ == "__main__":
-    print("Testing Vertex AI connection...")
+    print("Testing GenAI Gemini connection (using ADC)...")
     if test_connection():
         print("✓ Sync connection successful!")
     else:

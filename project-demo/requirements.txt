@@ -1,6 +1,8 @@
 # LLM Cost MVP - Dependencies
 
-# Vertex AI
+# Google Generative AI (new unified SDK with Vertex AI support)
+google-genai>=0.3.0
+# Google Cloud AI Platform (legacy, for backward compatibility)
 google-cloud-aiplatform>=1.38.0
 
 # Data & Analysis
