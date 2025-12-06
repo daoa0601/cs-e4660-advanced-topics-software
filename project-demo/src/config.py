@@ -13,8 +13,17 @@ load_dotenv()
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID")
 GCP_REGION = os.getenv("GCP_REGION", "us-central1")
 
-# Database
-DB_PATH = Path(os.getenv("DB_PATH", "data/experiments.db"))
+# Database - use session path if available
+def _get_db_path():
+    """Get database path from session or default."""
+    try:
+        from .session import get_session_db_path
+        return get_session_db_path()
+    except ImportError:
+        pass
+    return Path(os.getenv("DB_PATH", "data/experiments.db"))
+
+DB_PATH = _get_db_path()
 
 # Experiment defaults
 DEFAULT_ITERATIONS = int(os.getenv("DEFAULT_ITERATIONS", "20"))

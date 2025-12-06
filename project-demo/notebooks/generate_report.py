@@ -38,8 +38,18 @@ from src.db import (
 )
 from src.utils import format_cost
 
-# Output directory
-FIGURES_DIR = Path(__file__).parent.parent / "figures"
+# Output directory - use session path if available
+def _get_figures_dir():
+    """Get figures directory from session or default."""
+    try:
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from src.session import get_session_figures_path
+        return get_session_figures_path()
+    except ImportError:
+        pass
+    return Path(__file__).parent.parent / "figures"
+
+FIGURES_DIR = _get_figures_dir()
 
 
 def setup():
