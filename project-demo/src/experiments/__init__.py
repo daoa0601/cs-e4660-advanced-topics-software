@@ -15,8 +15,17 @@ from .domain_experiment import (
     ExperimentConfig,
     DomainExperimentRunner,
     compare_models_on_domain,
+    run_pro_advantage_analysis,
     StageResult,
     RunResult,
+)
+
+from .verified_experiment import (
+    VerifiedExperimentConfig,
+    VerifiedExperimentRunner,
+    VerifiedResult,
+    compare_models_verified,
+    run_verified_comparison_report,
 )
 
 __all__ = [
@@ -31,6 +40,13 @@ __all__ = [
     "ExperimentConfig",
     "DomainExperimentRunner",
     "compare_models_on_domain",
+    "run_pro_advantage_analysis",
     "StageResult",
     "RunResult",
+    # Verified Experiments (with ground truth)
+    "VerifiedExperimentConfig",
+    "VerifiedExperimentRunner",
+    "VerifiedResult",
+    "compare_models_verified",
+    "run_verified_comparison_report",
 ]

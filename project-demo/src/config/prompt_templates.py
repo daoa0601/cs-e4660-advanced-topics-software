@@ -934,6 +934,209 @@ GENERAL_DOMAIN = DomainConfig(
 
 
 # =============================================================================
+# COMPLEX REASONING DOMAIN (Pro-Advantage Tasks)
+# =============================================================================
+# These tasks are specifically designed to highlight scenarios where 
+# Gemini 2.5 Pro's advanced reasoning capabilities should outperform Flash.
+# They require multi-step reasoning, nuanced analysis, and careful logic.
+
+COMPLEX_REASONING_TEMPLATES = [
+    # Multi-step Mathematical Reasoning
+    PromptTemplate(
+        name="mathematical_proof",
+        template="Prove that {theorem}. Show your complete reasoning with each step clearly justified.",
+        variables={
+            "theorem": [
+                "the sum of the first n odd numbers equals n²",
+                "for any integer n, n³ - n is divisible by 6",
+                "the square root of 2 is irrational",
+                "there are infinitely many prime numbers",
+                "the sum of angles in any triangle is 180 degrees (using parallel line properties)",
+                "a number is divisible by 3 if and only if the sum of its digits is divisible by 3",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="multi_step_word_problem",
+        template="{scenario} Show all calculations and explain your reasoning at each step.",
+        variables={
+            "scenario": [
+                "A company's revenue grows 15% annually while costs grow 8%. Starting with revenue of $1M and costs of $800K, in which year does profit margin first exceed 40%? What is the total cumulative profit by that year?",
+                "A water tank is being filled by pipe A at 3 liters/min and drained by pipe B at 2 liters/min. If the tank is 40% full (holds 500L total) and pipe A runs for 20 min before both run together, how long until the tank overflows?",
+                "An investment grows at 7% annually for the first 5 years, then 5% for the next 5 years, then 3% thereafter. If I invest $10,000 today and add $1,000 each year, what is the value after 15 years?",
+                "A train leaves Station A at 60 mph toward Station B. 30 minutes later, another train leaves B at 80 mph toward A. If the stations are 280 miles apart, at what time and location do they meet? How far is each from their origin?",
+                "A bakery sells 200 loaves daily at $5 each. For every $0.50 price increase, sales drop by 10 loaves. What price maximizes revenue? What is the maximum revenue?",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    
+    # Complex Algorithm Design
+    PromptTemplate(
+        name="algorithm_with_constraints",
+        template="Design an algorithm for {problem}. Your solution must {constraints}. Analyze time and space complexity, prove correctness, and discuss edge cases.",
+        variables={
+            "problem": [
+                "finding the longest palindromic substring in a string",
+                "scheduling n jobs with deadlines and profits to maximize total profit",
+                "detecting if a graph contains a negative cycle",
+                "finding the median of a stream of numbers",
+                "implementing an LFU (Least Frequently Used) cache with O(1) operations",
+                "finding all strongly connected components in a directed graph",
+            ],
+            "constraints": [
+                "achieve O(n) time complexity",
+                "use O(1) extra space (in-place)",
+                "handle concurrent access safely without using locks",
+                "work correctly with integer overflow edge cases",
+                "support undo/redo operations efficiently",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="system_tradeoffs",
+        template="Design a {system_type}. You must optimize for these competing requirements: {requirements}. Explain your architectural decisions, the tradeoffs you made, and why.",
+        variables={
+            "system_type": [
+                "distributed key-value store",
+                "real-time multiplayer game server",
+                "high-frequency trading matching engine",
+                "globally distributed SQL database",
+                "ML model serving infrastructure",
+            ],
+            "requirements": [
+                "(1) sub-millisecond latency for reads, (2) strong consistency across regions, (3) 99.999% availability, (4) cost efficiency",
+                "(1) handling 1 million concurrent users, (2) exactly-once event delivery, (3) real-time state synchronization, (4) graceful handling of network partitions",
+                "(1) FIFO ordering guarantees, (2) nanosecond-level latency, (3) perfect audit trail, (4) zero message loss even during failures",
+                "(1) ACID compliance, (2) horizontal scalability, (3) cross-region replication with <100ms lag, (4) support for complex joins",
+                "(1) low latency (<50ms p99), (2) automatic scaling, (3) A/B testing support, (4) model version rollback within seconds",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    
+    # Scientific Hypothesis Evaluation
+    PromptTemplate(
+        name="confounding_analysis",
+        template="A study found that {finding}. Identify at least 5 potential confounding variables or alternative explanations. For each, explain the mechanism and propose a follow-up experiment to rule it out.",
+        variables={
+            "finding": [
+                "people who drink coffee live longer than non-coffee drinkers",
+                "students who take handwritten notes perform better than those typing notes",
+                "countries with higher chocolate consumption have more Nobel laureates",
+                "children who play video games have lower academic performance",
+                "employees who work from home report higher job satisfaction",
+                "regions with more ice cream sales have higher crime rates",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="experimental_critique",
+        template="Critique this experimental design and results: {experiment}. Identify methodological flaws, statistical issues, and threats to validity. Propose improvements.",
+        variables={
+            "experiment": [
+                "A drug trial with 50 patients showed 30% improvement vs placebo. P-value was 0.04. The trial was stopped early when interim analysis showed significance. They conclude the drug is effective.",
+                "A survey of 1000 people found those who meditate are 40% less stressed. Participants self-selected into meditation and control groups. The meditation group also had higher average income.",
+                "An A/B test for a website button color showed blue outperformed green (5.2% vs 4.8% conversion) with p=0.03. The test ran for 2 days during a holiday weekend. Sample was 10,000 per variant.",
+                "A mouse study showed gene knockout increased lifespan by 25%. All knockout mice were male; controls were mixed. Mice were fed ad libitum. The study was not blinded.",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    
+    # Nuanced Legal/Contract Analysis
+    PromptTemplate(
+        name="contract_hidden_risks",
+        template="Analyze this contract clause for hidden risks and ambiguities that could be exploited:\n\n\"{clause}\"\n\nIdentify at least 5 specific risks, explain how each could be exploited, and propose protective language.",
+        variables={
+            "clause": [
+                "Licensor grants Licensee a non-exclusive license to use the Software for internal business purposes. Licensor may update these terms at any time by posting to its website. Continued use constitutes acceptance.",
+                "Contractor shall deliver the Project by the Completion Date. If delays occur due to circumstances beyond Contractor's reasonable control, the Completion Date shall be extended accordingly. Client shall pay within 30 days of invoice.",
+                "Employee agrees that any invention conceived during employment belongs to Employer. Employee shall not engage in any business that competes with Employer during and for 2 years after employment.",
+                "Vendor warrants that Products will be free from defects for 12 months. Vendor's sole liability is repair or replacement. IN NO EVENT SHALL VENDOR BE LIABLE FOR CONSEQUENTIAL DAMAGES.",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    
+    # Multi-Constraint Optimization
+    PromptTemplate(
+        name="resource_allocation",
+        template="{scenario} Find the optimal allocation and prove why it's optimal. Show the mathematical formulation.",
+        variables={
+            "scenario": [
+                "You have 3 machines that can process 2 types of products. Machine A: 4 units of P1 or 2 units of P2 per hour. Machine B: 3 units of P1 or 4 units of P2 per hour. Machine C: 2 units of P1 or 5 units of P2 per hour. P1 sells for $10, P2 for $8. You need at least 100 P1 and 80 P2. Minimize total machine-hours while meeting demand.",
+                "Allocate a $10M budget across 5 projects. Each project has diminishing returns: Project i gives utility = k_i * sqrt(investment_i). The k values are [5, 8, 3, 6, 4]. Additionally, Projects 1 and 2 combined must get at least $3M, and no single project can get more than 40% of the budget.",
+                "Schedule 20 nurses across 7 days. Each day needs: 5 nurses for day shift, 4 for evening, 3 for night. Each nurse works exactly 5 days. No nurse can work more than 2 consecutive days. Minimize the maximum number of night shifts any nurse works.",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    PromptTemplate(
+        name="decision_under_uncertainty",
+        template="{scenario} Analyze the decision using expected value, utility theory, and risk considerations. Recommend the best course of action with full justification.",
+        variables={
+            "scenario": [
+                "A startup can: (A) Accept a $5M acquisition offer now, (B) Raise Series A with 30% dilution and 60% chance of $50M exit in 3 years (40% chance of failure and $0), or (C) Bootstrap with 20% annual growth and sell in 5 years at 5x revenue (current revenue $500K). The founders have $200K in savings and no other income. Which option maximizes expected utility?",
+                "A pharma company has a drug in Phase 2 trials. They can: (A) Sell rights now for $100M, (B) Continue to Phase 3 at $300M cost with 40% success probability leading to $2B in sales, or (C) Partner with Big Pharma for 50/50 split and shared Phase 3 costs. Recent competitor failures have raised regulatory scrutiny. What should they do?",
+                "An investor has $1M. Options: (A) 100% in S&P 500 (expected 10% return, 15% std dev), (B) 60/40 stocks/bonds (7% return, 8% std dev), (C) A private deal with 50% chance of 3x return, 50% chance of losing 80%. The investor is 55, plans to retire at 60, and has $500K in other savings. What's the optimal allocation?",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+    
+    # Logical Paradox Resolution
+    PromptTemplate(
+        name="paradox_analysis",
+        template="Analyze the {paradox}. Explain why it seems paradoxical, identify the hidden assumption or fallacy, and provide a clear resolution.",
+        variables={
+            "paradox": [
+                "Unexpected Hanging Paradox: A judge tells a prisoner he will be hanged on a weekday next week, but it will be a surprise (he won't know the night before). The prisoner reasons he can't be hanged Friday (he'd know Thursday night), so not Thursday either, etc., concluding he can't be hanged. He's hanged Wednesday and is surprised.",
+                "Newcomb's Problem: A predictor offers two boxes. Box A has $1000, Box B has either $0 or $1M. You can take both boxes or just B. The predictor predicted your choice: if you take both, B is empty; if you take only B, it contains $1M. The predictor is 99% accurate. What should you do?",
+                "Ship of Theseus: A ship has all its planks gradually replaced over time. Is it the same ship? What if we rebuilt a second ship from the old planks?",
+                "Voting Paradox: Three voters rank options A>B>C, B>C>A, and C>A>B. Majority prefers A to B, B to C, but C to A. How should we aggregate preferences?",
+            ]
+        },
+        difficulty="hard",
+        expected_output_length="long"
+    ),
+]
+
+COMPLEX_REASONING_DOMAIN = DomainConfig(
+    name="complex_reasoning",
+    description="Multi-step reasoning, mathematical proofs, algorithm design, and nuanced analysis (Pro-advantage)",
+    templates=COMPLEX_REASONING_TEMPLATES,
+    system_prompts={
+        "expert": "You are an expert problem solver with deep analytical skills. Show complete, rigorous reasoning. Every step must be justified. Identify edge cases and potential errors in your own logic.",
+        "professor": "You are a professor grading a PhD qualifying exam. Provide solutions that would earn full marks: complete, rigorous, with all assumptions stated and corner cases handled.",
+        "adversarial": "You are a critical analyst. Challenge assumptions, look for flaws, and stress-test all conclusions. If there's a way the answer could be wrong, find it."
+    },
+    evaluation_criteria=[
+        "logical_validity",       # Are all reasoning steps valid?
+        "completeness",           # Are all cases considered?
+        "mathematical_rigor",     # Is the math correct and well-justified?
+        "edge_case_handling",     # Are edge cases identified and handled?
+        "assumption_clarity",     # Are assumptions explicitly stated?
+        "solution_correctness",   # Is the final answer correct?
+        "reasoning_depth",        # How deep is the analysis?
+        "error_identification",   # Does it catch its own potential errors?
+    ]
+)
+
+
+# =============================================================================
 # DOMAIN REGISTRY
 # =============================================================================
 
@@ -945,6 +1148,7 @@ DOMAINS: Dict[str, DomainConfig] = {
     "finance": FINANCE_DOMAIN,
     "medical": MEDICAL_DOMAIN,
     "general": GENERAL_DOMAIN,
+    "complex_reasoning": COMPLEX_REASONING_DOMAIN,
 }
 
 

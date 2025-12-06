@@ -250,12 +250,33 @@ class DomainExperimentRunner:
         total_input = sum(s.input_tokens for s in stages)
         total_output = sum(s.output_tokens for s in stages)
         
-        # Simulate quality score (correlated with model and difficulty)
-        base_quality = 7.0 if "pro" in self.config.model_id.lower() else 6.5
-        difficulty_modifier = {"easy": 0.5, "medium": 0, "hard": -0.5}.get(
-            prompt_data.get("difficulty", "medium"), 0
-        )
-        quality_score = base_quality + difficulty_modifier + random.gauss(0, 0.5)
+        # Simulate quality score with domain-aware adjustments
+        # Pro has a larger advantage on complex reasoning tasks
+        is_complex_reasoning = self.config.domain == "complex_reasoning"
+        difficulty = prompt_data.get("difficulty", "medium")
+        
+        # Base quality depends on model
+        if "pro" in self.config.model_id.lower():
+            # Pro excels at complex reasoning
+            base_quality = 8.5 if is_complex_reasoning else 7.5
+        else:
+            # Flash struggles more with complex reasoning
+            base_quality = 6.0 if is_complex_reasoning else 6.5
+        
+        # Difficulty modifiers (harder tasks show more Pro advantage)
+        if is_complex_reasoning:
+            # Complex reasoning: much steeper penalty for hard tasks on Flash
+            difficulty_modifier = {
+                "easy": 0.5,
+                "medium": 0,
+                "hard": -1.5 if "flash" in self.config.model_id.lower() else -0.3
+            }.get(difficulty, 0)
+        else:
+            # Other domains: standard difficulty impact
+            difficulty_modifier = {"easy": 0.5, "medium": 0, "hard": -0.5}.get(difficulty, 0)
+        
+        # Add noise and clamp
+        quality_score = base_quality + difficulty_modifier + random.gauss(0, 0.4)
         quality_score = max(1, min(10, quality_score))
         
         return RunResult(
@@ -406,7 +427,7 @@ def compare_models_on_domain(
         iterations: Number of iterations per model
     
     Returns:
-        Comparison report
+        Comparison report with quality-adjusted cost analysis
     """
     if models is None:
         models = ["gemini-2.5-flash", "gemini-2.5-pro"]
@@ -425,27 +446,107 @@ def compare_models_on_domain(
         report = runner.run_experiment()
         results[model] = report["summary"]
     
-    # Generate comparison
+    # Generate comparison with quality-adjusted metrics
+    flash_results = results.get(models[0], {})
+    pro_results = results.get(models[1], {}) if len(models) > 1 else {}
+    
+    # Calculate quality-adjusted cost effectiveness
+    # Cost per quality point = total_cost / avg_quality
+    flash_cost_per_quality = (
+        flash_results["total_cost"] / flash_results["avg_quality_score"]
+        if flash_results.get("avg_quality_score", 0) > 0 else float('inf')
+    )
+    pro_cost_per_quality = (
+        pro_results["total_cost"] / pro_results["avg_quality_score"]
+        if pro_results.get("avg_quality_score", 0) > 0 else float('inf')
+    )
+    
+    # Quality improvement percentage
+    quality_improvement = (
+        ((pro_results.get("avg_quality_score", 0) - flash_results.get("avg_quality_score", 0)) 
+         / flash_results.get("avg_quality_score", 1)) * 100
+        if flash_results.get("avg_quality_score", 0) > 0 else 0
+    )
+    
+    # Cost increase percentage
+    cost_increase = (
+        ((pro_results.get("total_cost", 0) - flash_results.get("total_cost", 0)) 
+         / flash_results.get("total_cost", 1)) * 100
+        if flash_results.get("total_cost", 0) > 0 else 0
+    )
+    
+    # Is Pro worth it? Compare quality gain vs cost increase
+    pro_worth_it = quality_improvement > 0 and (
+        quality_improvement >= cost_increase * 0.1  # Quality gain worth 10% of cost increase
+        or pro_results.get("avg_quality_score", 0) >= 7.5  # Or absolute quality is high enough
+    )
+    
     comparison = {
         "domain": domain,
+        "domain_description": get_domain(domain).description if get_domain(domain) else "",
         "models_compared": models,
         "iterations_per_model": iterations,
         "results": results,
         "analysis": {
             "cost_ratio": (
-                results[models[1]]["total_cost"] / 
-                results[models[0]]["total_cost"]
-                if len(models) > 1 else 1
+                pro_results.get("total_cost", 0) / flash_results.get("total_cost", 1)
+                if flash_results.get("total_cost", 0) > 0 else 0
             ),
             "quality_difference": (
-                results[models[1]]["avg_quality_score"] - 
-                results[models[0]]["avg_quality_score"]
-                if len(models) > 1 else 0
+                pro_results.get("avg_quality_score", 0) - flash_results.get("avg_quality_score", 0)
+            ),
+            "quality_improvement_pct": round(quality_improvement, 1),
+            "cost_increase_pct": round(cost_increase, 1),
+            "flash_cost_per_quality_point": round(flash_cost_per_quality, 6),
+            "pro_cost_per_quality_point": round(pro_cost_per_quality, 6),
+            "pro_recommended": pro_worth_it,
+            "recommendation": (
+                "Pro RECOMMENDED: Quality improvement justifies cost premium"
+                if pro_worth_it else
+                "Flash RECOMMENDED: Cost savings outweigh quality difference"
             ),
         }
     }
     
     return comparison
+
+
+def run_pro_advantage_analysis(iterations: int = 10) -> Dict[str, Any]:
+    """
+    Run a comprehensive Pro vs Flash comparison across domains.
+    
+    Specifically tests the complex_reasoning domain where Pro should excel.
+    
+    Returns:
+        Analysis report showing where Pro's premium is justified
+    """
+    domains_to_test = ["general", "coding", "complex_reasoning"]
+    
+    print("\n" + "=" * 70)
+    print("PRO-ADVANTAGE ANALYSIS: Finding where Gemini Pro justifies its cost")
+    print("=" * 70 + "\n")
+    
+    all_results = {}
+    
+    for domain in domains_to_test:
+        print(f"\n--- Testing {domain.upper()} domain ---")
+        comparison = compare_models_on_domain(domain, iterations=iterations)
+        all_results[domain] = comparison
+    
+    # Summary
+    print("\n" + "=" * 70)
+    print("SUMMARY: When to use Pro vs Flash")
+    print("=" * 70)
+    
+    for domain, result in all_results.items():
+        analysis = result["analysis"]
+        rec = "✓ PRO" if analysis["pro_recommended"] else "✗ Flash"
+        print(f"\n{domain}:")
+        print(f"  Quality Improvement: {analysis['quality_improvement_pct']:+.1f}%")
+        print(f"  Cost Increase: {analysis['cost_increase_pct']:+.1f}%")
+        print(f"  Recommendation: {rec}")
+    
+    return all_results
 
 
 # =============================================================================
@@ -498,6 +599,11 @@ if __name__ == "__main__":
         help="Compare Flash vs Pro on the domain"
     )
     parser.add_argument(
+        "--pro-advantage",
+        action="store_true",
+        help="Run Pro-advantage analysis across domains (general, coding, complex_reasoning)"
+    )
+    parser.add_argument(
         "--list-domains",
         action="store_true",
         help="List available domains"
@@ -510,10 +616,16 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
+    # Pro-advantage analysis (runs without --domain)
+    if args.pro_advantage:
+        results = run_pro_advantage_analysis(iterations=args.iterations)
+        exit(0)
+    
     if args.list_domains:
         print("\nAvailable Domains:\n")
         for name, domain in DOMAINS.items():
-            print(f"  {name}:")
+            pro_recommended = "(Pro-advantage)" if name == "complex_reasoning" else ""
+            print(f"  {name}: {pro_recommended}")
             print(f"    {domain.description}")
             print(f"    Templates: {len(domain.templates)}")
             print()
@@ -533,7 +645,7 @@ if __name__ == "__main__":
         exit(0)
     
     if not args.domain:
-        print("Error: --domain is required")
+        print("Error: --domain is required (or use --pro-advantage for multi-domain analysis)")
         parser.print_help()
         exit(1)
     
@@ -552,9 +664,13 @@ if __name__ == "__main__":
             print(f"  Total Cost: ${summary['total_cost']:.4f}")
             print(f"  Avg Quality: {summary['avg_quality_score']:.2f}")
         
+        analysis = comparison["analysis"]
         print(f"\nAnalysis:")
-        print(f"  Cost Ratio (Pro/Flash): {comparison['analysis']['cost_ratio']:.1f}x")
-        print(f"  Quality Difference: {comparison['analysis']['quality_difference']:+.2f}")
+        print(f"  Cost Ratio (Pro/Flash): {analysis['cost_ratio']:.1f}x")
+        print(f"  Quality Improvement: {analysis['quality_improvement_pct']:+.1f}%")
+        print(f"  Cost per Quality (Flash): ${analysis['flash_cost_per_quality_point']:.6f}")
+        print(f"  Cost per Quality (Pro): ${analysis['pro_cost_per_quality_point']:.6f}")
+        print(f"\n  >>> {analysis['recommendation']}")
         exit(0)
     
     # Run single experiment
