@@ -125,9 +125,11 @@ def list_sessions():
                         cursor = conn.execute("SELECT COUNT(*) FROM runs")
                         count = cursor.fetchone()[0]
                         print(f"    Runs: {count}")
-                    except:
-                        pass
-                    conn.close()
+                    except sqlite3.OperationalError:
+                        # Table might not exist yet
+                        print("    Runs: 0 (no data)")
+                    finally:
+                        conn.close()
                 
                 sessions.append(item.name)
     

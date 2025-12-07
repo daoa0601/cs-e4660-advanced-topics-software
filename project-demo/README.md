@@ -125,6 +125,44 @@ python3 -m src.experiments.verified_experiment --compare-models -d hard -n 10
 
 ---
 
+## Tiered Pricing
+
+Cost calculations use context-aware tiered pricing:
+
+| Tier | Context Size | Flash Input/Output | Pro Input/Output |
+|------|--------------|-------------------|------------------|
+| Standard | ≤200K tokens | $0.15 / $0.60 | $1.25 / $10.00 |
+| Long-Context | >200K tokens | $0.30 / $1.20 | $2.50 / $15.00 |
+
+Multi-turn conversations automatically detect when context exceeds 200K tokens and apply long-context rates.
+
+---
+
+## Additional Experiment Types
+
+### A/B Testing (Prompt Variants)
+
+Compare different prompt strategies:
+
+```bash
+# Run A/B test on prompt variants
+python3 -m src.experiments.ab_testing --iterations 10
+```
+
+### Domain Experiments
+
+Test performance across specialized domains:
+
+```bash
+# Run domain-specific experiments
+python3 -m src.experiments.domain_experiment --domain coding -n 10
+
+# Available domains: coding, biology, legal, creative, finance, medical
+python3 -m src.experiments.domain_experiment --compare-domains
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -132,10 +170,13 @@ project-demo/
 ├── src/
 │   ├── experiment.py          # Main CLI entry point
 │   ├── session.py             # Session management
-│   ├── clients/               # LLM client (google-genai SDK)
-│   ├── config/                # Model configs, prompts
-│   ├── pricing/               # Tiered pricing (200K threshold)
-│   └── experiments/           # Domain & verified experiments
+│   ├── cost_calculator.py     # Cost calculation (uses tiered pricing)
+│   ├── pipeline.py            # Pipeline orchestration
+│   ├── evaluator.py           # Quality evaluation
+│   ├── clients/               # LLM client (google-genai SDK with Vertex AI)
+│   ├── pricing/               # Tiered pricing engine (200K token threshold)
+│   ├── config/                # Model configs, prompts, verifiable problems
+│   └── experiments/           # A/B testing, domain, and verified experiments
 ├── notebooks/
 │   ├── analysis.ipynb         # Jupyter analysis
 │   ├── generate_report.py     # Auto-generate figures

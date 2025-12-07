@@ -9,17 +9,92 @@ Features:
 - Automatic ADC authentication (no API key needed)
 - Streaming support with TTFT metrics
 - Multi-turn conversation support
+- Automatic retry with exponential backoff
 - Compatible response interface with legacy vertex.py
 """
 
 import time
+import functools
+import logging
 from dataclasses import dataclass
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Callable, TypeVar
 
 from google import genai
 from google.genai import types
 
 from ..config import GCP_PROJECT_ID, GCP_REGION, get_model_id
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Type variable for generic retry decorator
+T = TypeVar('T')
+
+
+# Retry configuration
+RETRY_MAX_ATTEMPTS = 3
+RETRY_BASE_DELAY = 1.0  # seconds
+RETRY_MAX_DELAY = 10.0  # seconds
+RETRY_BACKOFF_FACTOR = 2.0
+
+
+def with_retry(
+    max_attempts: int = RETRY_MAX_ATTEMPTS,
+    base_delay: float = RETRY_BASE_DELAY,
+    max_delay: float = RETRY_MAX_DELAY,
+    backoff_factor: float = RETRY_BACKOFF_FACTOR,
+    retryable_exceptions: tuple = (Exception,),
+) -> Callable:
+    """
+    Decorator that adds retry logic with exponential backoff.
+
+    Args:
+        max_attempts: Maximum number of retry attempts
+        base_delay: Initial delay between retries (seconds)
+        max_delay: Maximum delay between retries (seconds)
+        backoff_factor: Multiplier for delay after each retry
+        retryable_exceptions: Tuple of exception types to retry on
+
+    Returns:
+        Decorated function with retry logic
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            last_exception = None
+            delay = base_delay
+
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except retryable_exceptions as e:
+                    last_exception = e
+                    error_str = str(e).lower()
+
+                    # Check if error is retryable
+                    is_rate_limit = "429" in str(e) or "rate" in error_str or "quota" in error_str
+                    is_transient = "503" in str(e) or "timeout" in error_str or "unavailable" in error_str
+
+                    if attempt == max_attempts:
+                        logger.error(f"All {max_attempts} attempts failed for {func.__name__}: {e}")
+                        raise
+
+                    if is_rate_limit or is_transient:
+                        logger.warning(
+                            f"Attempt {attempt}/{max_attempts} failed for {func.__name__}: {e}. "
+                            f"Retrying in {delay:.1f}s..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * backoff_factor, max_delay)
+                    else:
+                        # Non-retryable error, raise immediately
+                        logger.error(f"Non-retryable error in {func.__name__}: {e}")
+                        raise
+
+            # Should not reach here, but just in case
+            raise last_exception
+        return wrapper
+    return decorator
 
 
 @dataclass
@@ -96,8 +171,9 @@ def call_model(prompt: str, model: str, streaming: bool = False) -> ModelRespons
         )
 
 
+@with_retry()
 def _call_model_sync(client: genai.Client, prompt: str, model_id: str) -> ModelResponse:
-    """Synchronous (non-streaming) model call."""
+    """Synchronous (non-streaming) model call with automatic retry."""
     start_time = time.perf_counter()
     
     response = client.models.generate_content(
@@ -123,10 +199,11 @@ def _call_model_sync(client: genai.Client, prompt: str, model_id: str) -> ModelR
     )
 
 
+@with_retry()
 def _call_model_streaming(
     client: genai.Client, prompt: str, model_id: str
 ) -> ModelResponse:
-    """Streaming model call with TTFT metrics."""
+    """Streaming model call with TTFT metrics and automatic retry."""
     start_time = time.perf_counter()
     first_token_time = None
     chunks = []

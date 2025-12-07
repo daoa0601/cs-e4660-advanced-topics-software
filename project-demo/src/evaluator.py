@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from .vertex_client import call_model
+from .clients import call_model
 from .cost_calculator import calculate_cost
 
 

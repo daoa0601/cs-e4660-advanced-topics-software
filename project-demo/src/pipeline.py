@@ -13,7 +13,7 @@ from typing import Optional, Callable
 from enum import Enum
 import re
 
-from .vertex_client import call_model, call_model_with_history, ModelResponse, StreamingMetrics
+from .clients import call_model, call_model_with_history, ModelResponse, StreamingMetrics
 from .cost_calculator import calculate_cost
 from .config import get_model_id
 
@@ -376,7 +376,13 @@ class MultiTurnPipeline:
                 messages.append({"role": "user", "content": user_message})
             
             response = call_model_with_history(messages, model, streaming)
-            turn_cost = calculate_cost(response.input_tokens, response.output_tokens, model)
+            # Pass context_tokens for tiered pricing (>200K triggers long-context rates)
+            turn_cost = calculate_cost(
+                response.input_tokens,
+                response.output_tokens,
+                model,
+                context_tokens=response.input_tokens  # Context size for tier detection
+            )
             
             stage_results.append(StageResult(
                 stage_name=f"turn_{turn_num}",

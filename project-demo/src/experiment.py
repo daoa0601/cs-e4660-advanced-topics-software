@@ -26,7 +26,7 @@ from .config import (
     TECHNICAL_DOCUMENTS,
     get_model_id,
 )
-from .vertex_client import test_connection, test_streaming
+from .clients import test_connection, test_streaming
 from .cost_calculator import format_cost
 from .pipeline import (
     get_pipeline,
