@@ -13,9 +13,13 @@ import argparse
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional, Callable, List, Tuple, Any
+from typing import Optional, Callable, List, Tuple, Any, Dict
 
 from tqdm import tqdm
+
+from .logging_config import setup_logging, get_logger
+
+logger = get_logger(__name__)
 
 from .config import (
     DEFAULT_ITERATIONS,
@@ -150,22 +154,23 @@ def run_parallel_iterations(
 ) -> List[Any]:
     """
     Run iterations in parallel using thread pool.
-    
+
     Args:
         tasks: List of argument tuples for execute_fn
         execute_fn: Function to execute for each task
         desc: Description for progress bar
         workers: Number of parallel workers
-    
+
     Returns:
         List of results (successful costs)
     """
     results = []
-    
+    logger.debug(f"Starting parallel execution: {len(tasks)} tasks, {workers} workers")
+
     with ThreadPoolExecutor(max_workers=workers) as executor:
         # Submit all tasks
         futures = {executor.submit(execute_fn, *args): i for i, args in enumerate(tasks)}
-        
+
         # Collect results with progress bar
         for future in tqdm(as_completed(futures), total=len(futures), desc=desc):
             try:
@@ -173,31 +178,174 @@ def run_parallel_iterations(
                 if result is not None:
                     results.append(result)
             except Exception as e:
-                print(f"\n  Warning: Task failed: {e}")
-    
+                logger.warning(f"Task failed: {e}")
+
+    logger.debug(f"Parallel execution complete: {len(results)}/{len(tasks)} succeeded")
     return results
 
 
 # =============================================================================
-# Workflow Runners
+# Generic Experiment Infrastructure
 # =============================================================================
 
-def _run_single_verbosity_iteration(
-    pipeline, variant, model, query, streaming, use_llm_eval
+
+def _run_single_iteration(
+    pipeline,
+    variant: str,
+    query: str,
+    model: str,
+    streaming: bool,
+    use_llm_eval: bool,
+    workflow: str,
+    pipeline_type: str,
 ) -> Optional[float]:
-    """Execute a single verbosity iteration (for parallel execution)."""
+    """
+    Generic single iteration runner for all workflow types.
+
+    Args:
+        pipeline: The pipeline instance to execute
+        variant: Pipeline variant name (for logging)
+        query: Input query/prompt
+        model: Model identifier
+        streaming: Use streaming API
+        use_llm_eval: Use LLM evaluation
+        workflow: Workflow name for database logging
+        pipeline_type: Pipeline type for database logging
+
+    Returns:
+        Cost if successful, None otherwise
+    """
     result = pipeline.execute(query, model, streaming=streaming)
-    
     log_pipeline_result(
-        workflow="verbosity",
+        workflow=workflow,
         result=result,
         model=model,
         query=query,
-        pipeline_type="linear",
+        pipeline_type=pipeline_type,
         use_llm_eval=use_llm_eval,
     )
-    
     return result.total_cost if result.success else None
+
+
+def run_workflow_experiment(
+    workflow: str,
+    pipeline_configs: Dict[str, tuple],
+    model: str,
+    iterations: int,
+    delay: float,
+    streaming: bool,
+    use_llm_eval: bool,
+    parallel: bool,
+    workers: int,
+    pipeline_type: str = "linear",
+    experiment_name: Optional[str] = None,
+) -> dict:
+    """
+    Generic experiment runner for all workflow types.
+
+    Args:
+        workflow: Workflow name (verbosity, context, react, etc.)
+        pipeline_configs: Dict mapping variant name to (pipeline, queries_list)
+        model: Model identifier
+        iterations: Number of iterations per variant
+        delay: Delay between sequential calls
+        streaming: Use streaming API
+        use_llm_eval: Use LLM evaluation
+        parallel: Run iterations in parallel
+        workers: Number of parallel workers
+        pipeline_type: Pipeline type for logging
+        experiment_name: Display name for the experiment
+
+    Returns:
+        Dict mapping variant names to lists of costs
+    """
+    from .cost_calculator import format_cost
+
+    display_name = experiment_name or workflow.replace("_", " ").title()
+    logger.info(f"Starting {display_name} experiment: model={get_model_id(model)}, iterations={iterations}")
+
+    total_variants = len(pipeline_configs)
+    total_iterations = iterations * total_variants
+
+    print(f"\n{'='*60}")
+    print(f"Running {display_name} Experiment")
+    print(f"Model: {get_model_id(model)}")
+    print(f"Iterations: {iterations} x {total_variants} variants = {total_iterations} total")
+    print(f"Streaming: {streaming}")
+    if parallel:
+        print(f"Parallel: {workers} workers")
+    print(f"{'='*60}\n")
+
+    results = {variant: [] for variant in pipeline_configs}
+    cumulative_cost = 0.0
+    completed_iterations = 0
+    start_time = time.time()
+
+    for variant_idx, (variant, (pipeline, queries)) in enumerate(pipeline_configs.items()):
+        # Print pipeline info
+        print(f"\nPipeline: {variant} ({variant_idx + 1}/{total_variants})")
+        if hasattr(pipeline, 'stages'):
+            print(f"  Stages: {' → '.join(s.name for s in pipeline.stages)}")
+        if hasattr(pipeline, 'max_iterations'):
+            print(f"  Max iterations: {pipeline.max_iterations}")
+        if hasattr(pipeline, 'max_retries'):
+            print(f"  Max retries: {pipeline.max_retries}")
+
+        if parallel:
+            # Build task list for parallel execution
+            tasks = [
+                (pipeline, variant, queries[i % len(queries)], model,
+                 streaming, use_llm_eval, workflow, pipeline_type)
+                for i in range(iterations)
+            ]
+            costs = run_parallel_iterations(
+                tasks, _run_single_iteration,
+                desc=f"  {variant}", workers=workers
+            )
+            results[variant].extend(costs)
+            variant_cost = sum(costs)
+            cumulative_cost += variant_cost
+            completed_iterations += iterations
+        else:
+            # Sequential execution with progress tracking
+            variant_cost = 0.0
+            for i in tqdm(range(iterations), desc=f"  {variant}"):
+                query = queries[i % len(queries)]
+                cost = _run_single_iteration(
+                    pipeline, variant, query, model,
+                    streaming, use_llm_eval, workflow, pipeline_type
+                )
+                if cost is not None:
+                    results[variant].append(cost)
+                    variant_cost += cost
+                    cumulative_cost += cost
+                completed_iterations += 1
+                time.sleep(delay)
+
+        # Print variant progress
+        elapsed = time.time() - start_time
+        remaining_iterations = total_iterations - completed_iterations
+        if completed_iterations > 0:
+            avg_time = elapsed / completed_iterations
+            eta = avg_time * remaining_iterations
+            print(f"  Variant cost: {format_cost(variant_cost)} | "
+                  f"Cumulative: {format_cost(cumulative_cost)} | "
+                  f"ETA: {eta/60:.1f}min")
+
+    _print_results_summary(display_name, results)
+
+    # Final progress summary
+    total_time = time.time() - start_time
+    print(f"\nExperiment completed in {total_time/60:.1f} minutes")
+    print(f"Total cost: {format_cost(cumulative_cost)}")
+
+    logger.info(f"Completed {display_name} experiment: cost={format_cost(cumulative_cost)}, time={total_time/60:.1f}min")
+    return results
+
+
+# =============================================================================
+# Workflow-Specific Configurations
+# =============================================================================
 
 
 def run_verbosity_experiment(
@@ -210,81 +358,24 @@ def run_verbosity_experiment(
     workers: int = DEFAULT_WORKERS,
 ) -> dict:
     """Run the verbosity tax experiment (concise vs CoT vs hybrid)."""
-    print(f"\n{'='*60}")
-    print(f"Running Verbosity Experiment")
-    print(f"Model: {get_model_id(model)}")
-    print(f"Iterations: {iterations}")
-    print(f"Streaming: {streaming}")
-    print(f"Parallel: {parallel} (workers: {workers})" if parallel else "")
-    print(f"{'='*60}\n")
-    
-    results = {"concise": [], "cot": [], "hybrid_cot": []}
-    
-    pipelines = {
-        "concise": get_pipeline("verbosity_concise"),
-        "cot": get_pipeline("verbosity_cot"),
-        "hybrid_cot": get_pipeline("hybrid_cot"),
+    pipeline_configs = {
+        "concise": (get_pipeline("verbosity_concise"), VERBOSITY_QUERIES),
+        "cot": (get_pipeline("verbosity_cot"), VERBOSITY_QUERIES),
+        "hybrid_cot": (get_pipeline("hybrid_cot"), VERBOSITY_QUERIES),
     }
-    
-    for variant, pipeline in pipelines.items():
-        print(f"\nPipeline: {variant}")
-        if isinstance(pipeline, Pipeline):
-            print(f"  Stages: {' → '.join(s.name for s in pipeline.stages)}")
-            if any(s.model_override for s in pipeline.stages):
-                models_used = [s.model_override or model for s in pipeline.stages]
-                print(f"  Models: {' → '.join(models_used)}")
-        
-        if parallel:
-            # Build task list
-            tasks = [
-                (pipeline, variant, model, VERBOSITY_QUERIES[i % len(VERBOSITY_QUERIES)], 
-                 streaming, use_llm_eval)
-                for i in range(iterations)
-            ]
-            costs = run_parallel_iterations(
-                tasks, _run_single_verbosity_iteration, 
-                desc=f"  {variant}", workers=workers
-            )
-            results[variant].extend(costs)
-        else:
-            # Sequential execution
-            for i in tqdm(range(iterations), desc=f"  {variant}"):
-                query = VERBOSITY_QUERIES[i % len(VERBOSITY_QUERIES)]
-                
-                result = pipeline.execute(query, model, streaming=streaming)
-                
-                log_pipeline_result(
-                    workflow="verbosity",
-                    result=result,
-                    model=model,
-                    query=query,
-                    pipeline_type="linear",
-                    use_llm_eval=use_llm_eval,
-                )
-                
-                if result.success:
-                    results[variant].append(result.total_cost)
-                
-                time.sleep(delay)
-    
-    _print_results_summary("Verbosity", results)
-    return results
-
-
-def _run_single_context_iteration(
-    pipeline, variant, context, model, streaming, use_llm_eval
-) -> Optional[float]:
-    """Execute a single context iteration."""
-    result = pipeline.execute(context, model, streaming=streaming)
-    log_pipeline_result(
-        workflow="context",
-        result=result,
+    return run_workflow_experiment(
+        workflow="verbosity",
+        pipeline_configs=pipeline_configs,
         model=model,
-        query=f"Summarize: {context[:100]}...",
-        pipeline_type="linear",
+        iterations=iterations,
+        delay=delay,
+        streaming=streaming,
         use_llm_eval=use_llm_eval,
+        parallel=parallel,
+        workers=workers,
+        pipeline_type="linear",
+        experiment_name="Verbosity",
     )
-    return result.total_cost if result.success else None
 
 
 def run_context_experiment(
@@ -297,71 +388,23 @@ def run_context_experiment(
     workers: int = DEFAULT_WORKERS,
 ) -> dict:
     """Run the context length experiment."""
-    print(f"\n{'='*60}")
-    print(f"Running Context Length Experiment")
-    print(f"Model: {get_model_id(model)}")
-    print(f"Parallel: {parallel}" if parallel else "")
-    print(f"{'='*60}\n")
-    
-    results = {"short": [], "long": []}
-    
-    pipelines = {
-        "short": get_pipeline("context_short"),
-        "long": get_pipeline("context_long"),
+    pipeline_configs = {
+        "short": (get_pipeline("context_short"), [SHORT_CONTEXT]),
+        "long": (get_pipeline("context_long"), [LONG_CONTEXT]),
     }
-    
-    contexts = {
-        "short": SHORT_CONTEXT,
-        "long": LONG_CONTEXT,
-    }
-    
-    for variant in ["short", "long"]:
-        pipeline = pipelines[variant]
-        context = contexts[variant]
-        
-        print(f"\nPipeline: {variant} ({len(pipeline.stages)} stages)")
-        
-        if parallel:
-            tasks = [(pipeline, variant, context, model, streaming, use_llm_eval)
-                     for _ in range(iterations)]
-            costs = run_parallel_iterations(
-                tasks, _run_single_context_iteration,
-                desc=f"  {variant}", workers=workers
-            )
-            results[variant].extend(costs)
-        else:
-            for i in tqdm(range(iterations), desc=f"  {variant}"):
-                result = pipeline.execute(context, model, streaming=streaming)
-                log_pipeline_result(
-                    workflow="context",
-                    result=result,
-                    model=model,
-                    query=f"Summarize: {context[:100]}...",
-                    pipeline_type="linear",
-                    use_llm_eval=use_llm_eval,
-                )
-                if result.success:
-                    results[variant].append(result.total_cost)
-                time.sleep(delay)
-    
-    _print_results_summary("Context", results)
-    return results
-
-
-def _run_single_react_iteration(
-    pipeline, variant, query, model, streaming, use_llm_eval
-) -> Optional[float]:
-    """Execute a single ReAct iteration."""
-    result = pipeline.execute(query, model, streaming=streaming)
-    log_pipeline_result(
-        workflow="react",
-        result=result,
+    return run_workflow_experiment(
+        workflow="context",
+        pipeline_configs=pipeline_configs,
         model=model,
-        query=query,
-        pipeline_type="react",
+        iterations=iterations,
+        delay=delay,
+        streaming=streaming,
         use_llm_eval=use_llm_eval,
+        parallel=parallel,
+        workers=workers,
+        pipeline_type="linear",
+        experiment_name="Context Length",
     )
-    return result.total_cost if result.success else None
 
 
 def run_react_experiment(
@@ -374,14 +417,6 @@ def run_react_experiment(
     workers: int = DEFAULT_WORKERS,
 ) -> dict:
     """Run the ReAct agent experiment."""
-    print(f"\n{'='*60}")
-    print(f"Running ReAct Agent Experiment")
-    print(f"Model: {get_model_id(model)}")
-    print(f"Parallel: {parallel}" if parallel else "")
-    print(f"{'='*60}\n")
-    
-    results = {"react": [], "react_hybrid": []}
-    
     research_queries = [
         "What are the main causes of climate change and what can be done about it?",
         "How does machine learning differ from traditional programming?",
@@ -389,59 +424,23 @@ def run_react_experiment(
         "What are the pros and cons of remote work?",
         "How do vaccines work to protect against diseases?",
     ]
-    
-    pipelines = {
-        "react": get_pipeline("react_research"),
-        "react_hybrid": get_pipeline("react_hybrid"),
+    pipeline_configs = {
+        "react": (get_pipeline("react_research"), research_queries),
+        "react_hybrid": (get_pipeline("react_hybrid"), research_queries),
     }
-    
-    for variant, pipeline in pipelines.items():
-        print(f"\nPipeline: {variant}")
-        print(f"  Max iterations: {pipeline.max_iterations}")
-        print(f"  Think model: {pipeline.think_model}, Act model: {pipeline.act_model}")
-        
-        if parallel:
-            tasks = [(pipeline, variant, research_queries[i % len(research_queries)],
-                     model, streaming, use_llm_eval) for i in range(iterations)]
-            costs = run_parallel_iterations(
-                tasks, _run_single_react_iteration,
-                desc=f"  {variant}", workers=workers
-            )
-            results[variant].extend(costs)
-        else:
-            for i in tqdm(range(iterations), desc=f"  {variant}"):
-                query = research_queries[i % len(research_queries)]
-                result = pipeline.execute(query, model, streaming=streaming)
-                log_pipeline_result(
-                    workflow="react",
-                    result=result,
-                    model=model,
-                    query=query,
-                    pipeline_type="react",
-                    use_llm_eval=use_llm_eval,
-                )
-                if result.success:
-                    results[variant].append(result.total_cost)
-                time.sleep(delay)
-    
-    _print_results_summary("ReAct", results)
-    return results
-
-
-def _run_single_multiturn_iteration(
-    pipeline, variant, query, model, streaming, use_llm_eval
-) -> Optional[float]:
-    """Execute a single multi-turn iteration."""
-    result = pipeline.execute(query, model, streaming=streaming)
-    log_pipeline_result(
-        workflow="multiturn",
-        result=result,
+    return run_workflow_experiment(
+        workflow="react",
+        pipeline_configs=pipeline_configs,
         model=model,
-        query=query,
-        pipeline_type="multiturn",
+        iterations=iterations,
+        delay=delay,
+        streaming=streaming,
         use_llm_eval=use_llm_eval,
+        parallel=parallel,
+        workers=workers,
+        pipeline_type="react",
+        experiment_name="ReAct Agent",
     )
-    return result.total_cost if result.success else None
 
 
 def run_multiturn_experiment(
@@ -454,14 +453,6 @@ def run_multiturn_experiment(
     workers: int = DEFAULT_WORKERS,
 ) -> dict:
     """Run the multi-turn conversation experiment."""
-    print(f"\n{'='*60}")
-    print(f"Running Multi-Turn Conversation Experiment")
-    print(f"Model: {get_model_id(model)}")
-    print(f"Parallel: {parallel}" if parallel else "")
-    print(f"{'='*60}\n")
-    
-    results = {"3_turn": [], "5_turn": []}
-    
     initial_queries = [
         "Tell me about renewable energy sources.",
         "Explain how neural networks learn.",
@@ -469,62 +460,26 @@ def run_multiturn_experiment(
         "How do electric vehicles work?",
         "Describe the water cycle.",
     ]
-    
-    pipelines = {
-        "3_turn": get_pipeline("multiturn_3"),
-        "5_turn": get_pipeline("multiturn_5"),
+    pipeline_configs = {
+        "3_turn": (get_pipeline("multiturn_3"), initial_queries),
+        "5_turn": (get_pipeline("multiturn_5"), initial_queries),
     }
-    
-    for variant, pipeline in pipelines.items():
-        num_turns = len(pipeline.turns) + 1
-        print(f"\nPipeline: {variant} ({num_turns} turns)")
-        
-        if parallel:
-            tasks = [(pipeline, variant, initial_queries[i % len(initial_queries)],
-                     model, streaming, use_llm_eval) for i in range(iterations)]
-            costs = run_parallel_iterations(
-                tasks, _run_single_multiturn_iteration,
-                desc=f"  {variant}", workers=workers
-            )
-            results[variant].extend(costs)
-        else:
-            for i in tqdm(range(iterations), desc=f"  {variant}"):
-                query = initial_queries[i % len(initial_queries)]
-                result = pipeline.execute(query, model, streaming=streaming)
-                log_pipeline_result(
-                    workflow="multiturn",
-                    result=result,
-                    model=model,
-                    query=query,
-                    pipeline_type="multiturn",
-                    use_llm_eval=use_llm_eval,
-                )
-                if result.success:
-                    results[variant].append(result.total_cost)
-                time.sleep(delay)
-    
-    _print_results_summary("Multi-Turn", results)
-    
-    if results["5_turn"]:
-        print("\n  Context token growth tracked - see analysis notebook for details")
-    
-    return results
-
-
-def _run_single_self_correcting_iteration(
-    pipeline, variant, task, model, streaming, use_llm_eval
-) -> Optional[float]:
-    """Execute a single self-correcting iteration."""
-    result = pipeline.execute(task, model, streaming=streaming)
-    log_pipeline_result(
-        workflow="self_correcting",
-        result=result,
+    result = run_workflow_experiment(
+        workflow="multiturn",
+        pipeline_configs=pipeline_configs,
         model=model,
-        query=task,
-        pipeline_type="self_correcting",
+        iterations=iterations,
+        delay=delay,
+        streaming=streaming,
         use_llm_eval=use_llm_eval,
+        parallel=parallel,
+        workers=workers,
+        pipeline_type="multiturn",
+        experiment_name="Multi-Turn Conversation",
     )
-    return result.total_cost if result.success else None
+    if result.get("5_turn"):
+        print("\n  Context token growth tracked - see analysis notebook for details")
+    return result
 
 
 def run_self_correcting_experiment(
@@ -537,75 +492,30 @@ def run_self_correcting_experiment(
     workers: int = DEFAULT_WORKERS,
 ) -> dict:
     """Run the self-correcting agent experiment."""
-    print(f"\n{'='*60}")
-    print(f"Running Self-Correcting Agent Experiment")
-    print(f"Model: {get_model_id(model)}")
-    print(f"Parallel: {parallel}" if parallel else "")
-    print(f"{'='*60}\n")
-    
-    results = {"self_correct": [], "self_correct_hybrid": []}
-    
-    tasks = [
+    coding_tasks = [
         "Write a Python function to check if a string is a palindrome.",
         "Create a SQL query to find the top 5 customers by total purchase amount.",
         "Write a regular expression to validate email addresses.",
         "Create a function to find the nth Fibonacci number efficiently.",
         "Write code to reverse a linked list.",
     ]
-    
-    pipelines = {
-        "self_correct": get_pipeline("self_correcting"),
-        "self_correct_hybrid": get_pipeline("self_correcting_hybrid"),
+    pipeline_configs = {
+        "self_correct": (get_pipeline("self_correcting"), coding_tasks),
+        "self_correct_hybrid": (get_pipeline("self_correcting_hybrid"), coding_tasks),
     }
-    
-    for variant, pipeline in pipelines.items():
-        print(f"\nPipeline: {variant}")
-        print(f"  Max retries: {pipeline.max_retries}")
-        print(f"  Generate: {pipeline.generate_model}, Validate: {pipeline.validate_model}")
-        
-        if parallel:
-            task_list = [(pipeline, variant, tasks[i % len(tasks)],
-                         model, streaming, use_llm_eval) for i in range(iterations)]
-            costs = run_parallel_iterations(
-                task_list, _run_single_self_correcting_iteration,
-                desc=f"  {variant}", workers=workers
-            )
-            results[variant].extend(costs)
-        else:
-            for i in tqdm(range(iterations), desc=f"  {variant}"):
-                task = tasks[i % len(tasks)]
-                result = pipeline.execute(task, model, streaming=streaming)
-                log_pipeline_result(
-                    workflow="self_correcting",
-                    result=result,
-                    model=model,
-                    query=task,
-                    pipeline_type="self_correcting",
-                    use_llm_eval=use_llm_eval,
-                )
-                if result.success:
-                    results[variant].append(result.total_cost)
-                time.sleep(delay)
-    
-    _print_results_summary("Self-Correcting", results)
-    return results
-
-
-def _run_single_document_iteration(
-    pipeline, pipeline_name, doc, model, streaming, use_llm_eval
-) -> Optional[float]:
-    """Execute a single document analysis iteration."""
-    doc_input = f"Document: {doc['title']}\nType: {doc['type']}\n\n{doc['content']}"
-    result = pipeline.execute(doc_input, model, streaming=streaming)
-    log_pipeline_result(
-        workflow="document",
-        result=result,
+    return run_workflow_experiment(
+        workflow="self_correcting",
+        pipeline_configs=pipeline_configs,
         model=model,
-        query=f"Analyze: {doc['title']}",
-        pipeline_type="linear",
+        iterations=iterations,
+        delay=delay,
+        streaming=streaming,
         use_llm_eval=use_llm_eval,
+        parallel=parallel,
+        workers=workers,
+        pipeline_type="self_correcting",
+        experiment_name="Self-Correcting Agent",
     )
-    return result.total_cost if result.success else None
 
 
 def run_document_experiment(
@@ -617,66 +527,31 @@ def run_document_experiment(
     parallel: bool = False,
     workers: int = DEFAULT_WORKERS,
 ) -> dict:
-    """
-    Run document analysis experiment.
-    
-    Tests different pipeline strategies for analyzing technical documents.
-    """
-    print(f"\n{'='*60}")
-    print(f"Running Document Analysis Experiment")
-    print(f"Model: {get_model_id(model)}")
-    print(f"Iterations: {iterations}")
-    print(f"Documents: {len(TECHNICAL_DOCUMENTS)}")
-    print(f"Parallel: {parallel}" if parallel else "")
-    print(f"{'='*60}\n")
-    
-    results = {
-        "doc_analysis_simple": [],
-        "doc_analysis_thorough": [],
-        "doc_analysis_iterative": [],
-        "doc_analysis_hybrid": [],
-    }
-    
-    pipelines_to_run = [
-        "doc_analysis_simple",
-        "doc_analysis_thorough", 
-        "doc_analysis_iterative",
-        "doc_analysis_hybrid",
+    """Run document analysis experiment with different pipeline strategies."""
+    # Transform documents into query format
+    doc_queries = [
+        f"Document: {doc['title']}\nType: {doc['type']}\n\n{doc['content']}"
+        for doc in TECHNICAL_DOCUMENTS
     ]
-    
-    for pipeline_name in pipelines_to_run:
-        pipeline = get_pipeline(pipeline_name)
-        print(f"\nPipeline: {pipeline_name} ({len(pipeline.stages)} stages)")
-        print(f"  Stages: {' → '.join(s.name for s in pipeline.stages)}")
-        
-        if parallel:
-            tasks = [(pipeline, pipeline_name, 
-                     TECHNICAL_DOCUMENTS[i % len(TECHNICAL_DOCUMENTS)],
-                     model, streaming, use_llm_eval) for i in range(iterations)]
-            costs = run_parallel_iterations(
-                tasks, _run_single_document_iteration,
-                desc=f"  {pipeline_name}", workers=workers
-            )
-            results[pipeline_name].extend(costs)
-        else:
-            for i in tqdm(range(iterations), desc=f"  {pipeline_name}"):
-                doc = TECHNICAL_DOCUMENTS[i % len(TECHNICAL_DOCUMENTS)]
-                doc_input = f"Document: {doc['title']}\nType: {doc['type']}\n\n{doc['content']}"
-                result = pipeline.execute(doc_input, model, streaming=streaming)
-                log_pipeline_result(
-                    workflow="document",
-                    result=result,
-                    model=model,
-                    query=f"Analyze: {doc['title']}",
-                    pipeline_type="linear",
-                    use_llm_eval=use_llm_eval,
-                )
-                if result.success:
-                    results[pipeline_name].append(result.total_cost)
-                time.sleep(delay)
-    
-    _print_results_summary("Document Analysis", results)
-    return results
+    pipeline_configs = {
+        "doc_analysis_simple": (get_pipeline("doc_analysis_simple"), doc_queries),
+        "doc_analysis_thorough": (get_pipeline("doc_analysis_thorough"), doc_queries),
+        "doc_analysis_iterative": (get_pipeline("doc_analysis_iterative"), doc_queries),
+        "doc_analysis_hybrid": (get_pipeline("doc_analysis_hybrid"), doc_queries),
+    }
+    return run_workflow_experiment(
+        workflow="document",
+        pipeline_configs=pipeline_configs,
+        model=model,
+        iterations=iterations,
+        delay=delay,
+        streaming=streaming,
+        use_llm_eval=use_llm_eval,
+        parallel=parallel,
+        workers=workers,
+        pipeline_type="linear",
+        experiment_name="Document Analysis",
+    )
 
 
 def _print_results_summary(workflow_name: str, results: dict):
@@ -915,6 +790,219 @@ def _print_full_summary():
 
 
 # =============================================================================
+# Health Check & Cost Estimation
+# =============================================================================
+
+
+def run_health_check() -> bool:
+    """
+    Check system health: database, API connectivity, and configuration.
+
+    Returns:
+        True if all checks pass, False otherwise
+    """
+    print("\n" + "="*60)
+    print("System Health Check")
+    print("="*60 + "\n")
+
+    all_passed = True
+
+    # 1. Check configuration
+    print("1. Configuration")
+    try:
+        from .config import GCP_PROJECT_ID, GCP_REGION, DB_PATH
+        if GCP_PROJECT_ID:
+            print(f"   ✓ GCP_PROJECT_ID: {GCP_PROJECT_ID}")
+        else:
+            print("   ✗ GCP_PROJECT_ID: Not set")
+            all_passed = False
+        print(f"   ✓ GCP_REGION: {GCP_REGION}")
+        print(f"   ✓ DB_PATH: {DB_PATH}")
+    except Exception as e:
+        print(f"   ✗ Configuration error: {e}")
+        all_passed = False
+
+    # 2. Check database
+    print("\n2. Database")
+    try:
+        init_db()
+        from .db import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM runs")
+        run_count = cursor.fetchone()[0]
+        conn.close()
+        print(f"   ✓ Database accessible ({run_count} existing runs)")
+    except Exception as e:
+        print(f"   ✗ Database error: {e}")
+        all_passed = False
+
+    # 3. Check API connectivity
+    print("\n3. API Connectivity")
+    try:
+        if test_connection():
+            print("   ✓ Gemini API connection successful")
+        else:
+            print("   ✗ Gemini API connection failed")
+            all_passed = False
+    except Exception as e:
+        print(f"   ✗ API error: {e}")
+        all_passed = False
+
+    # 4. Check streaming
+    print("\n4. Streaming API")
+    try:
+        if test_streaming():
+            print("   ✓ Streaming API functional")
+        else:
+            print("   ⚠ Streaming API unavailable (non-critical)")
+    except Exception as e:
+        print(f"   ⚠ Streaming check failed: {e} (non-critical)")
+
+    # 5. Check pipelines
+    print("\n5. Pipeline Registry")
+    try:
+        pipelines = list_pipelines()
+        print(f"   ✓ {len(pipelines)} pipelines registered")
+    except Exception as e:
+        print(f"   ✗ Pipeline registry error: {e}")
+        all_passed = False
+
+    print("\n" + "="*60)
+    if all_passed:
+        print("Health Check: PASSED ✓")
+    else:
+        print("Health Check: FAILED ✗")
+    print("="*60 + "\n")
+
+    return all_passed
+
+
+def estimate_experiment_cost(
+    workflow: str,
+    model: str,
+    iterations: int,
+) -> dict:
+    """
+    Estimate the cost of running an experiment before execution.
+
+    Args:
+        workflow: Workflow name
+        model: Model identifier
+        iterations: Number of iterations
+
+    Returns:
+        Dict with cost estimates
+    """
+    from .cost_calculator import calculate_cost, format_cost
+    from .config import get_model_id
+
+    # Estimated tokens per workflow (based on typical usage)
+    WORKFLOW_ESTIMATES = {
+        "verbosity": {
+            "variants": 3,
+            "avg_input_tokens": 500,
+            "avg_output_tokens": 800,
+        },
+        "context": {
+            "variants": 2,
+            "avg_input_tokens": 2000,
+            "avg_output_tokens": 500,
+        },
+        "react": {
+            "variants": 2,
+            "avg_input_tokens": 1500,
+            "avg_output_tokens": 1200,
+            "avg_iterations": 3,  # ReAct loops
+        },
+        "multiturn": {
+            "variants": 2,
+            "avg_input_tokens": 800,
+            "avg_output_tokens": 600,
+            "avg_turns": 4,  # Average turns
+        },
+        "self_correcting": {
+            "variants": 2,
+            "avg_input_tokens": 1000,
+            "avg_output_tokens": 1500,
+            "avg_retries": 2,
+        },
+        "document": {
+            "variants": 4,
+            "avg_input_tokens": 3000,
+            "avg_output_tokens": 1000,
+        },
+    }
+
+    if workflow not in WORKFLOW_ESTIMATES:
+        return {"error": f"Unknown workflow: {workflow}"}
+
+    est = WORKFLOW_ESTIMATES[workflow]
+    variants = est["variants"]
+    input_tokens = est["avg_input_tokens"]
+    output_tokens = est["avg_output_tokens"]
+
+    # Adjust for multi-step workflows
+    multiplier = 1
+    if "avg_iterations" in est:
+        multiplier = est["avg_iterations"]
+    elif "avg_turns" in est:
+        multiplier = est["avg_turns"]
+    elif "avg_retries" in est:
+        multiplier = est["avg_retries"]
+
+    # Calculate per-iteration cost
+    per_iteration_cost = calculate_cost(
+        input_tokens * multiplier,
+        output_tokens * multiplier,
+        model
+    )
+
+    # Total estimates
+    total_iterations = iterations * variants
+    total_cost = per_iteration_cost * total_iterations
+    min_cost = total_cost * 0.7  # -30% variance
+    max_cost = total_cost * 1.5  # +50% variance
+
+    return {
+        "workflow": workflow,
+        "model": get_model_id(model),
+        "iterations": iterations,
+        "variants": variants,
+        "total_api_calls": total_iterations,
+        "estimated_cost": total_cost,
+        "cost_range": (min_cost, max_cost),
+        "per_iteration": per_iteration_cost,
+    }
+
+
+def print_cost_estimate(workflow: str, model: str, iterations: int):
+    """Print formatted cost estimate."""
+    from .cost_calculator import format_cost
+
+    est = estimate_experiment_cost(workflow, model, iterations)
+
+    if "error" in est:
+        print(f"Error: {est['error']}")
+        return
+
+    print("\n" + "="*60)
+    print("Cost Estimate")
+    print("="*60)
+    print(f"  Workflow:        {est['workflow']}")
+    print(f"  Model:           {est['model']}")
+    print(f"  Iterations:      {est['iterations']} x {est['variants']} variants")
+    print(f"  Total API calls: {est['total_api_calls']}")
+    print(f"  Per iteration:   {format_cost(est['per_iteration'])}")
+    print("-"*60)
+    print(f"  Estimated cost:  {format_cost(est['estimated_cost'])}")
+    print(f"  Expected range:  {format_cost(est['cost_range'][0])} - {format_cost(est['cost_range'][1])}")
+    print("="*60)
+    print("\nNote: Actual costs may vary based on response length and complexity.")
+    print("Use --llm-eval to add ~$0.01-0.05 per iteration for quality scoring.\n")
+
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -1013,8 +1101,27 @@ Examples:
         action="store_true",
         help="Run complete experiment suite: all workflows, A/B tests, 20 iterations, 16 workers, streaming, LLM eval"
     )
-    
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+        help="Set logging level (default: INFO)"
+    )
+    parser.add_argument(
+        "--estimate-cost",
+        action="store_true",
+        help="Estimate cost before running experiment (does not execute)"
+    )
+    parser.add_argument(
+        "--health-check",
+        action="store_true",
+        help="Check system health (database, API, config) and exit"
+    )
+
     args = parser.parse_args()
+
+    # Configure logging based on CLI argument
+    setup_logging(level=args.log_level)
     
     # Handle reset before init
     if args.reset:
@@ -1068,23 +1175,47 @@ Examples:
         _print_full_summary()
         return
     
+    if args.health_check:
+        success = run_health_check()
+        return 0 if success else 1
+
     if args.full_suite:
         run_full_suite(args.iterations, args.delay, args.streaming, args.llm_eval, args.parallel, args.workers)
         return
-    
+
     if args.full_experiment:
         run_full_experiment()
         return
-    
-    if args.workflow and args.model:
+
+    # Handle --estimate-cost (requires workflow and model)
+    if args.estimate_cost:
+        if not args.workflow or not args.model:
+            parser.error("--estimate-cost requires both --workflow and --model")
+        print_cost_estimate(args.workflow, args.model, args.iterations)
+        return
+
+    # Handle workflow execution (requires both workflow and model)
+    if args.workflow or args.model:
+        if not args.workflow:
+            parser.error("--workflow is required when --model is specified")
+        if not args.model:
+            parser.error("--model is required when --workflow is specified")
+
         run_experiment(
-            args.workflow, args.model, args.iterations, 
+            args.workflow, args.model, args.iterations,
             args.delay, args.streaming, args.llm_eval,
             args.parallel, args.workers
         )
         return
-    
+
+    # No action specified - show help
     parser.print_help()
+    print("\n" + "-"*60)
+    print("Quick start:")
+    print("  python3 -m src.experiment --health-check")
+    print("  python3 -m src.experiment --workflow verbosity --model flash --estimate-cost")
+    print("  python3 -m src.experiment --workflow verbosity --model flash --iterations 5")
+    print("-"*60)
 
 
 if __name__ == "__main__":

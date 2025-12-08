@@ -110,6 +110,7 @@ def init_db():
     """)
     
     # Create indexes for common queries
+    # Single-column indexes
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_runs_workflow ON runs(workflow)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_runs_pipeline ON runs(pipeline)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_runs_model ON runs(model)")
@@ -118,6 +119,12 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_stages_run_id ON stages(run_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_stages_stage_type ON stages(stage_type)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_quality_run_id ON quality_scores(run_id)")
+
+    # Compound indexes for common query patterns
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_runs_workflow_model ON runs(workflow, model)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_stages_run_turn ON stages(run_id, turn)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_runs_timestamp ON runs(timestamp)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_stages_run_iteration ON stages(run_id, iteration)")
     
     conn.commit()
     conn.close()

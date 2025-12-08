@@ -15,7 +15,6 @@ Features:
 
 import time
 import functools
-import logging
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Callable, TypeVar
 
@@ -23,9 +22,9 @@ from google import genai
 from google.genai import types
 
 from ..config import GCP_PROJECT_ID, GCP_REGION, get_model_id
+from ..logging_config import get_logger
 
-# Configure logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Type variable for generic retry decorator
 T = TypeVar('T')
@@ -174,21 +173,24 @@ def call_model(prompt: str, model: str, streaming: bool = False) -> ModelRespons
 @with_retry()
 def _call_model_sync(client: genai.Client, prompt: str, model_id: str) -> ModelResponse:
     """Synchronous (non-streaming) model call with automatic retry."""
+    logger.debug(f"Calling {model_id} (sync) with {len(prompt)} chars")
     start_time = time.perf_counter()
-    
+
     response = client.models.generate_content(
         model=model_id,
         contents=prompt,
     )
-    
+
     end_time = time.perf_counter()
     latency_ms = int((end_time - start_time) * 1000)
-    
+
     # Extract usage metadata
     usage = response.usage_metadata
     input_tokens = usage.prompt_token_count if usage else 0
     output_tokens = usage.candidates_token_count if usage else 0
-    
+
+    logger.debug(f"Response: {input_tokens} in, {output_tokens} out, {latency_ms}ms")
+
     return ModelResponse(
         text=response.text,
         input_tokens=input_tokens,
@@ -204,11 +206,12 @@ def _call_model_streaming(
     client: genai.Client, prompt: str, model_id: str
 ) -> ModelResponse:
     """Streaming model call with TTFT metrics and automatic retry."""
+    logger.debug(f"Calling {model_id} (streaming) with {len(prompt)} chars")
     start_time = time.perf_counter()
     first_token_time = None
     chunks = []
     chunk_count = 0
-    
+
     # Use streaming generation
     response_stream = client.models.generate_content_stream(
         model=model_id,
@@ -245,7 +248,12 @@ def _call_model_streaming(
         tokens_per_second=round(tokens_per_second, 2),
         chunk_count=chunk_count,
     )
-    
+
+    logger.debug(
+        f"Response: {input_tokens} in, {output_tokens} out, "
+        f"TTFT={ttft_ms}ms, total={total_latency_ms}ms"
+    )
+
     return ModelResponse(
         text=full_text,
         input_tokens=input_tokens,
