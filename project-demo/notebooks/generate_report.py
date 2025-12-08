@@ -29,14 +29,21 @@ from plotly.subplots import make_subplots
 from scipy import stats
 
 from src.db import (
-    get_runs, 
-    get_stages, 
+    get_runs,
+    get_stages,
     get_quality_scores,
     get_pipeline_summary,
     get_cost_by_model,
     get_cost_by_stage_type,
 )
 from src.utils import format_cost
+from src.visualization import (
+    FLASH_COLOR,
+    PRO_COLOR,
+    MODEL_COLORS,
+    DEFAULT_TEMPLATE,
+    load_experiment_data,
+)
 
 # Output directory - use session path if available
 def _get_figures_dir():
@@ -99,48 +106,42 @@ def fig1_cost_by_model(data):
     }).round(6)
     model_costs.columns = ['total', 'mean', 'std', 'count']
     model_costs = model_costs.reset_index()
-    
+
     fig = px.bar(
-        model_costs, 
-        x='model', 
+        model_costs,
+        x='model',
         y='mean',
         error_y='std',
         color='model',
-        color_discrete_map={
-            'gemini-2.5-flash': '#4ecdc4',
-            'gemini-2.5-pro': '#ff6b6b'
-        },
+        color_discrete_map=MODEL_COLORS,
         title='Average Cost per Run by Model',
         labels={'mean': 'Average Cost ($)', 'model': 'Model'}
     )
-    fig.update_layout(template='plotly_white', showlegend=False)
-    
+    fig.update_layout(template=DEFAULT_TEMPLATE, showlegend=False)
+
     save_figure(fig, "01_cost_by_model")
-    
+
     return model_costs
 
 
 def fig2_cost_by_pipeline(data):
     """Figure 2: Cost comparison across pipelines."""
     pipeline_costs = data.groupby(['pipeline', 'model'])['total_cost'].mean().reset_index()
-    
+
     fig = px.bar(
         pipeline_costs,
         x='pipeline',
         y='total_cost',
         color='model',
         barmode='group',
-        color_discrete_map={
-            'gemini-2.5-flash': '#4ecdc4',
-            'gemini-2.5-pro': '#ff6b6b'
-        },
+        color_discrete_map=MODEL_COLORS,
         title='Average Cost by Pipeline',
         labels={'total_cost': 'Average Cost ($)', 'pipeline': 'Pipeline'}
     )
-    fig.update_layout(template='plotly_white', xaxis_tickangle=-45)
-    
+    fig.update_layout(template=DEFAULT_TEMPLATE, xaxis_tickangle=-45)
+
     save_figure(fig, "02_cost_by_pipeline", width=1200)
-    
+
     return pipeline_costs
 
 
@@ -149,26 +150,23 @@ def fig3_quality_comparison(data):
     if 'combined_score' not in data.columns:
         print("   ⚠ No quality scores - skipping")
         return None
-    
+
     quality_by_model = data.groupby('model')['combined_score'].agg(['mean', 'std']).reset_index()
-    
+
     fig = px.bar(
         quality_by_model,
         x='model',
         y='mean',
         error_y='std',
         color='model',
-        color_discrete_map={
-            'gemini-2.5-flash': '#4ecdc4',
-            'gemini-2.5-pro': '#ff6b6b'
-        },
+        color_discrete_map=MODEL_COLORS,
         title='Average Quality Score by Model',
         labels={'mean': 'Quality Score', 'model': 'Model'}
     )
-    fig.update_layout(template='plotly_white', showlegend=False)
-    
+    fig.update_layout(template=DEFAULT_TEMPLATE, showlegend=False)
+
     save_figure(fig, "03_quality_by_model")
-    
+
     return quality_by_model
 
 
@@ -177,24 +175,21 @@ def fig4_cost_quality_scatter(data):
     if 'combined_score' not in data.columns:
         print("   ⚠ No quality scores - skipping")
         return None
-    
+
     fig = px.scatter(
         data,
         x='total_cost',
         y='combined_score',
         color='model',
         hover_data=['pipeline'],
-        color_discrete_map={
-            'gemini-2.5-flash': '#4ecdc4',
-            'gemini-2.5-pro': '#ff6b6b'
-        },
+        color_discrete_map=MODEL_COLORS,
         title='Cost vs Quality by Model',
         labels={'total_cost': 'Cost ($)', 'combined_score': 'Quality Score'}
     )
-    fig.update_layout(template='plotly_white')
-    
+    fig.update_layout(template=DEFAULT_TEMPLATE)
+
     save_figure(fig, "04_cost_quality_scatter")
-    
+
     return None
 
 
@@ -202,7 +197,7 @@ def fig5_stage_cost_distribution(stages):
     """Figure 5: Cost distribution by stage type."""
     stage_costs = stages.groupby('stage_type')['cost'].sum().reset_index()
     stage_costs = stage_costs.sort_values('cost', ascending=True)
-    
+
     fig = px.bar(
         stage_costs,
         x='cost',
@@ -213,10 +208,10 @@ def fig5_stage_cost_distribution(stages):
         color='cost',
         color_continuous_scale='Teal'
     )
-    fig.update_layout(template='plotly_white', showlegend=False)
-    
+    fig.update_layout(template=DEFAULT_TEMPLATE, showlegend=False)
+
     save_figure(fig, "05_stage_cost_distribution")
-    
+
     return stage_costs
 
 
@@ -225,14 +220,14 @@ def fig6_flash_vs_pro_advantage(data):
     if 'combined_score' not in data.columns:
         print("   ⚠ No quality scores - skipping")
         return None
-    
+
     # Calculate quality difference per pipeline
     advantages = []
     for pipeline in data['pipeline'].unique():
         p_data = data[data['pipeline'] == pipeline]
         flash = p_data[p_data['model'] == 'gemini-2.5-flash']['combined_score'].mean()
         pro = p_data[p_data['model'] == 'gemini-2.5-pro']['combined_score'].mean()
-        
+
         if pd.notna(flash) and pd.notna(pro):
             advantages.append({
                 'pipeline': pipeline,
@@ -240,26 +235,26 @@ def fig6_flash_vs_pro_advantage(data):
                 'pro_quality': pro,
                 'pro_advantage': pro - flash
             })
-    
+
     adv_df = pd.DataFrame(advantages).sort_values('pro_advantage', ascending=True)
-    
+
     # Color by whether Pro is better
     adv_df['color'] = adv_df['pro_advantage'].apply(lambda x: 'Pro Better' if x > 0 else 'Flash Better')
-    
+
     fig = px.bar(
         adv_df,
         x='pro_advantage',
         y='pipeline',
         orientation='h',
         color='color',
-        color_discrete_map={'Pro Better': '#ff6b6b', 'Flash Better': '#4ecdc4'},
+        color_discrete_map={'Pro Better': PRO_COLOR, 'Flash Better': FLASH_COLOR},
         title='Quality Advantage: Pro vs Flash',
         labels={'pro_advantage': 'Quality Difference (Pro - Flash)', 'pipeline': 'Pipeline'}
     )
-    fig.update_layout(template='plotly_white')
-    
+    fig.update_layout(template=DEFAULT_TEMPLATE)
+
     save_figure(fig, "06_pro_vs_flash_advantage", height=600)
-    
+
     return adv_df
 
 
@@ -385,11 +380,11 @@ def fig7_verified_experiments():
             name='All Difficulties',
             x=models,
             y=all_acc,
-            marker_color=['#4ecdc4', '#ff6b6b'][:len(models)],
+            marker_color=[FLASH_COLOR, PRO_COLOR][:len(models)],
             text=[f'{a:.0f}%' for a in all_acc],
             textposition='auto',
         ))
-        
+
         fig.add_trace(go.Bar(
             name='Hard Problems Only',
             x=models,
@@ -403,7 +398,7 @@ def fig7_verified_experiments():
             title='Accuracy on Verified Problems (Ground Truth)',
             yaxis_title='Accuracy (%)',
             barmode='group',
-            template='plotly_white',
+            template=DEFAULT_TEMPLATE,
             yaxis=dict(range=[0, 100]),
         )
         

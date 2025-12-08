@@ -203,9 +203,60 @@ project-demo/
 | `--list-pipelines` | Show available pipelines |
 | `--summary` | Show existing run stats |
 | `--reset` | Clear database |
+| `--health-check` | Verify database, API, config, and pipelines |
+| `--estimate-cost` | Preview experiment cost without running |
+| `--log-level` | Set logging level (DEBUG, INFO, WARNING, ERROR) |
+
+---
+
+## Verify Setup
+
+Before running experiments, verify your environment:
+
+```bash
+python3 -m src.experiment --health-check
+```
+
+This checks:
+- Database connection and schema
+- API connectivity (Vertex AI)
+- Configuration files
+- Available pipelines
+
+---
+
+## Cost Preview
+
+Estimate costs before running experiments:
+
+```bash
+# Estimate cost for a specific workflow
+python3 -m src.experiment --workflow react --model flash --iterations 10 --estimate-cost
+
+# Estimate full experiment cost
+python3 -m src.experiment --full-experiment --estimate-cost
+```
+
+---
+
+## Debugging
+
+Control logging verbosity:
+
+```bash
+# Verbose output for debugging
+python3 -m src.experiment --workflow verbosity --model flash --log-level DEBUG
+
+# Quiet mode (warnings and errors only)
+python3 -m src.experiment --full-experiment --log-level WARNING
+```
+
+Available log levels: `DEBUG`, `INFO` (default), `WARNING`, `ERROR`
 
 ---
 
 ## Documentation
 
 See [LLM_Cost_Decomposition_Platform_Report.md](../LLM_Cost_Decomposition_Platform_Report.md) for detailed findings.
+
+For troubleshooting, see [docs/06-troubleshooting.md](docs/06-troubleshooting.md).

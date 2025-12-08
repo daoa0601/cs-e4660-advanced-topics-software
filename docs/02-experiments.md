@@ -62,6 +62,26 @@ Two phases of experiments were conducted:
 
 ---
 
+## v2.0 Results (Latest)
+
+Version 2.0 introduced reasoning-focused experiments and session-based isolation:
+
+### New Features Tested
+- **Session Management**: Isolated experiment runs with separate databases
+- **Verified Experiments**: Ground truth accuracy testing (math, logic problems)
+- **Extended A/B Testing**: Multiple prompt variants comparison
+
+### v2.0 Coverage
+Run the latest experiments to see updated results:
+```bash
+python3 -m src.experiment --full-experiment
+python3 notebooks/generate_report.py
+```
+
+Results are saved to `figures/summary.md` in your session directory.
+
+---
+
 ## Key Insight
 
 **Flash provides 7x better quality-per-dollar** for most tasks. Pro justified only for complex reasoning where quality improvement exceeds cost premium.

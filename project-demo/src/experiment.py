@@ -554,6 +554,43 @@ def run_document_experiment(
     )
 
 
+def run_rag_experiment(
+    model: str,
+    iterations: int = DEFAULT_ITERATIONS,
+    delay: float = DELAY_BETWEEN_CALLS,
+    streaming: bool = False,
+    use_llm_eval: bool = False,
+    parallel: bool = False,
+    workers: int = DEFAULT_WORKERS,
+) -> dict:
+    """Run RAG pipeline experiment with different retrieval/verification strategies."""
+    rag_queries = [
+        "What is machine learning and how does it work?",
+        "Explain the difference between deep learning and neural networks.",
+        "How do transformers work in NLP?",
+        "What are the ethical considerations in AI development?",
+        "Describe reinforcement learning algorithms and their applications.",
+    ]
+    pipeline_configs = {
+        "rag_basic": (get_pipeline("rag_basic"), rag_queries),
+        "rag_verified": (get_pipeline("rag_verified"), rag_queries),
+        "rag_hybrid": (get_pipeline("rag_hybrid"), rag_queries),
+    }
+    return run_workflow_experiment(
+        workflow="rag",
+        pipeline_configs=pipeline_configs,
+        model=model,
+        iterations=iterations,
+        delay=delay,
+        streaming=streaming,
+        use_llm_eval=use_llm_eval,
+        parallel=parallel,
+        workers=workers,
+        pipeline_type="rag",
+        experiment_name="RAG Pipeline",
+    )
+
+
 def _print_results_summary(workflow_name: str, results: dict):
     """Print summary of experiment results."""
     print(f"\n{'='*60}")
@@ -590,6 +627,7 @@ def run_experiment(
         "multiturn": run_multiturn_experiment,
         "self_correcting": run_self_correcting_experiment,
         "document": run_document_experiment,
+        "rag": run_rag_experiment,
     }
     
     if workflow not in workflows:
@@ -624,7 +662,7 @@ def run_full_suite(
             streaming = False
     
     # Run all workflows
-    for workflow in ["verbosity", "context", "react", "multiturn", "self_correcting", "document"]:
+    for workflow in ["verbosity", "context", "react", "multiturn", "self_correcting", "document", "rag"]:
         for model in ["flash", "pro"]:
             run_experiment(workflow, model, iterations, delay, streaming, use_llm_eval, parallel, workers)
     
@@ -685,8 +723,8 @@ Configuration:
     print("PHASE 1: Standard Workflow Experiments")
     print("="*70)
     
-    workflows = ["verbosity", "context", "react", "multiturn", "self_correcting", "document"]
-    
+    workflows = ["verbosity", "context", "react", "multiturn", "self_correcting", "document", "rag"]
+
     for workflow in workflows:
         for model in ["flash", "pro"]:
             run_experiment(
@@ -1025,8 +1063,8 @@ Examples:
     
     parser.add_argument(
         "--workflow",
-        choices=["verbosity", "context", "react", "multiturn", "self_correcting", "document"],
-        help="Workflow to run"
+        choices=["verbosity", "context", "react", "multiturn", "self_correcting", "document", "rag", "token_profile", "cost_quality"],
+        help="Workflow to run (token_profile and cost_quality analyze existing data)"
     )
     parser.add_argument(
         "--model",
@@ -1192,6 +1230,27 @@ Examples:
         if not args.workflow or not args.model:
             parser.error("--estimate-cost requires both --workflow and --model")
         print_cost_estimate(args.workflow, args.model, args.iterations)
+        return
+
+    # Handle token_profile workflow (analysis only, doesn't require model)
+    if args.workflow == "token_profile":
+        from .experiments.token_profiler import run_token_profiler
+        run_token_profiler(
+            workflow=None,  # Analyze all workflows
+            model=args.model,  # Optional model filter
+            show_charts=True,
+            save_charts=False,
+        )
+        return
+
+    # Handle cost_quality workflow (analysis only, no API calls)
+    if args.workflow == "cost_quality":
+        from .experiments.cost_quality_analysis import run_cost_quality_analysis
+        run_cost_quality_analysis(
+            model=args.model,  # Optional model filter
+            show_charts=True,
+            save_charts=False,
+        )
         return
 
     # Handle workflow execution (requires both workflow and model)

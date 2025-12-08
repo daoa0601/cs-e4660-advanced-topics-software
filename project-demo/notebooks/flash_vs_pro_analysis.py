@@ -19,11 +19,18 @@ import sys
 sys.path.insert(0, '..')
 
 from src.db import (
-    get_runs, 
-    get_stages, 
+    get_runs,
+    get_stages,
     get_quality_scores,
 )
 from src.utils import format_cost
+from src.visualization import (
+    FLASH_COLOR,
+    PRO_COLOR,
+    MODEL_COLORS,
+    DEFAULT_TEMPLATE,
+    load_runs_with_quality,
+)
 
 
 def load_data():
@@ -183,40 +190,40 @@ def find_pro_advantages(df):
 
 def create_comparison_chart(metrics):
     """Create a side-by-side comparison chart."""
-    fig = make_subplots(rows=1, cols=2, 
+    fig = make_subplots(rows=1, cols=2,
                         subplot_titles=('Average Cost per Run', 'Average Quality Score'))
-    
+
     # Cost comparison
     fig.add_trace(
-        go.Bar(name='Flash', x=['Cost'], y=[metrics['flash']['avg_cost']], 
-               marker_color='#4ecdc4'),
+        go.Bar(name='Flash', x=['Cost'], y=[metrics['flash']['avg_cost']],
+               marker_color=FLASH_COLOR),
         row=1, col=1
     )
     fig.add_trace(
-        go.Bar(name='Pro', x=['Cost'], y=[metrics['pro']['avg_cost']], 
-               marker_color='#ff6b6b'),
+        go.Bar(name='Pro', x=['Cost'], y=[metrics['pro']['avg_cost']],
+               marker_color=PRO_COLOR),
         row=1, col=1
     )
-    
+
     # Quality comparison
     if metrics['flash']['avg_quality'] and metrics['pro']['avg_quality']:
         fig.add_trace(
-            go.Bar(name='Flash', x=['Quality'], y=[metrics['flash']['avg_quality']], 
-                   showlegend=False, marker_color='#4ecdc4'),
+            go.Bar(name='Flash', x=['Quality'], y=[metrics['flash']['avg_quality']],
+                   showlegend=False, marker_color=FLASH_COLOR),
             row=1, col=2
         )
         fig.add_trace(
-            go.Bar(name='Pro', x=['Quality'], y=[metrics['pro']['avg_quality']], 
-                   showlegend=False, marker_color='#ff6b6b'),
+            go.Bar(name='Pro', x=['Quality'], y=[metrics['pro']['avg_quality']],
+                   showlegend=False, marker_color=PRO_COLOR),
             row=1, col=2
         )
-    
+
     fig.update_layout(
         title='Flash vs Pro: Cost and Quality Comparison',
         barmode='group',
-        template='plotly_white'
+        template=DEFAULT_TEMPLATE
     )
-    
+
     return fig
 
 
