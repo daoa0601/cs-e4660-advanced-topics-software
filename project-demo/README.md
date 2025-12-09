@@ -27,13 +27,27 @@ python3 -m src.experiment --full-experiment
 ```
 
 This runs:
-- All workflows (verbosity, context, react, multiturn, self_correcting, document)
+- All workflows (verbosity, context, react, multiturn, self_correcting, document, rag)
 - Both models (Flash & Pro)
 - 20 iterations each
 - 16 parallel workers
 - Streaming metrics (TTFT)
 - LLM quality evaluation
 - A/B testing
+
+### Available Workflows
+
+| Workflow | Type | Description |
+|----------|------|-------------|
+| `verbosity` | Experiment | Compare concise vs chain-of-thought prompts |
+| `context` | Experiment | Short vs long context length impact |
+| `react` | Experiment | ReAct agent with think-act loops |
+| `multiturn` | Experiment | Multi-turn conversation (3 and 5 turns) |
+| `self_correcting` | Experiment | Generate-validate-correct cycles |
+| `document` | Experiment | Document analysis pipelines |
+| `rag` | Experiment | Retrieval-augmented generation (basic, verified, hybrid) |
+| `token_profile` | Analysis | Analyze token distribution patterns (no API calls) |
+| `cost_quality` | Analysis | Pareto frontier cost-quality analysis (no API calls) |
 
 ### Individual Workflows
 
@@ -43,6 +57,13 @@ python3 -m src.experiment --workflow react --model flash --iterations 10
 
 # With streaming metrics
 python3 -m src.experiment --workflow verbosity --model pro --streaming
+
+# RAG experiment (retrieval-augmented generation)
+python3 -m src.experiment --workflow rag --model flash --iterations 5
+
+# Analysis workflows (no API calls required)
+python3 -m src.experiment --workflow token_profile
+python3 -m src.experiment --workflow cost_quality --parallel
 
 # See all options
 python3 -m src.experiment --help
@@ -259,4 +280,14 @@ Available log levels: `DEBUG`, `INFO` (default), `WARNING`, `ERROR`
 
 See [LLM_Cost_Decomposition_Platform_Report.md](../LLM_Cost_Decomposition_Platform_Report.md) for detailed findings.
 
-For troubleshooting, see [docs/06-troubleshooting.md](docs/06-troubleshooting.md).
+### Reference Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](../docs/01-architecture.md) | System design & package structure |
+| [Experiments](../docs/02-experiments.md) | Experiment results & version history |
+| [Pipelines](../docs/03-pipelines.md) | All 18 pipeline configurations |
+| [Recommendations](../docs/04-recommendations.md) | Cost optimization strategies |
+| [Troubleshooting](../docs/05-troubleshooting.md) | Common errors and solutions |
+| [New Workflows](../docs/06-new-workflows.md) | RAG, Token Profiler, Cost-Quality |
+| [Future Improvements](../docs/07-future-improvements.md) | Planned enhancements |

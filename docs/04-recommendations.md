@@ -1,5 +1,10 @@
 # Optimization Recommendations
 
+**Version:** 3.0  
+**Last Updated:** December 2025
+
+---
+
 ## Model Selection
 
 | Scenario | Recommendation | Reason |
@@ -42,6 +47,40 @@ Pro justifies its 8x cost premium when:
 
 ---
 
+## Using Analysis Workflows for Optimization
+
+The platform includes analysis workflows that help identify cost optimization opportunities without making API calls:
+
+### Token Distribution Analysis
+
+Understand where tokens are being spent:
+
+```bash
+python3 -m src.experiment --workflow token_profile
+```
+
+Key metrics:
+- **Input/output ratio** — high output amplification may indicate verbose responses
+- **Context growth patterns** — identify conversation turns where costs spike
+- **Per-stage token breakdown** — find expensive pipeline stages
+
+### Cost-Quality Pareto Analysis
+
+Find the most cost-effective pipeline configurations:
+
+```bash
+python3 -m src.experiment --workflow cost_quality --parallel
+```
+
+This identifies:
+- **Pareto-optimal configurations** — best cost-quality tradeoffs
+- **Quality per dollar** — efficiency ranking of all pipelines
+- **Flash vs Pro efficiency** — which model provides better value
+
+See [06-new-workflows.md](06-new-workflows.md) for detailed documentation on these workflows.
+
+---
+
 ## Cost Formulas
 
 ```python
@@ -54,3 +93,12 @@ turn_n_cost ≈ turn_1_cost * (1 + 0.4 * (n - 1))
 # Agent cost variance
 agent_cost = base_cost * iterations  # iterations: 1-5
 ```
+
+---
+
+## Related Documentation
+
+- [02-experiments.md](02-experiments.md) - Experiment results and metrics
+- [03-pipelines.md](03-pipelines.md) - Pipeline configurations
+- [06-new-workflows.md](06-new-workflows.md) - Analysis workflow details
+

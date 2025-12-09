@@ -1,15 +1,22 @@
 """
-Prompt Template System - Backward Compatibility Facade
+Prompt Template System for Domain-Specific LLM Cost Experiments
 
-This module re-exports from the prompt_domains subpackage for backward compatibility.
-New code should import directly from src.config.prompt_domains.
+This module provides a flexible template system for generating domain-specific
+prompts and test inputs for LLM cost analysis experiments.
+
+Supported domains:
+- coding: Software development, debugging, code review
+- biology: Molecular biology, genetics, biochemistry
+- legal: Contract analysis, compliance, legal research
+- creative: Writing, storytelling, content creation
+- finance: Financial analysis, trading, risk assessment
+- medical: Clinical reasoning, diagnosis, treatment planning
+- general: General knowledge and reasoning tasks
+- complex_reasoning: Multi-step reasoning, proofs, algorithm design
 """
 
-# Re-export everything from the new subpackage
-from .prompt_domains import (
-    # Models
-    PromptTemplate,
-    DomainConfig,
+from .models import PromptTemplate, DomainConfig
+from .data import (
     # Domain configurations
     CODING_DOMAIN,
     BIOLOGY_DOMAIN,
@@ -19,7 +26,7 @@ from .prompt_domains import (
     MEDICAL_DOMAIN,
     GENERAL_DOMAIN,
     COMPLEX_REASONING_DOMAIN,
-    # Template lists
+    # Template lists (for direct access)
     CODING_TEMPLATES,
     BIOLOGY_TEMPLATES,
     LEGAL_TEMPLATES,
@@ -28,16 +35,16 @@ from .prompt_domains import (
     MEDICAL_TEMPLATES,
     GENERAL_TEMPLATES,
     COMPLEX_REASONING_TEMPLATES,
-    # Registry
+)
+from .registry import (
     DOMAINS,
     get_domain,
     list_domains,
     generate_experiment_prompts,
     save_prompts_to_file,
     load_prompts_from_file,
-    # CLI
-    main,
 )
+from .cli import main
 
 __all__ = [
     # Models
@@ -71,7 +78,3 @@ __all__ = [
     # CLI
     "main",
 ]
-
-# Support running as script
-if __name__ == "__main__":
-    main()

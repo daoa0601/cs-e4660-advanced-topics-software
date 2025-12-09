@@ -59,12 +59,33 @@ def load_cost_quality_data() -> Tuple[pd.DataFrame, pd.DataFrame]:
     return data, stages
 
 
-def calculate_pareto_frontier(data: pd.DataFrame) -> List[ParetoPoint]:
+def _check_dominance(args: Tuple[int, 'ParetoPoint', List['ParetoPoint']]) -> Tuple[int, bool]:
+    """Check if a point is dominated by any other point (for parallel processing)."""
+    idx, p1, all_points = args
+    for j, p2 in enumerate(all_points):
+        if idx != j:
+            # p2 dominates p1 if p2 has lower cost AND higher quality
+            if p2.avg_cost <= p1.avg_cost and p2.avg_quality >= p1.avg_quality:
+                if p2.avg_cost < p1.avg_cost or p2.avg_quality > p1.avg_quality:
+                    return (idx, True)  # is_dominated = True
+    return (idx, False)  # is_dominated = False
+
+
+def calculate_pareto_frontier(
+    data: pd.DataFrame,
+    parallel: bool = False,
+    workers: int = 4,
+) -> List[ParetoPoint]:
     """
     Calculate Pareto-optimal pipelines based on cost and quality.
 
     A point is Pareto-optimal if no other point has both lower cost
     AND higher quality.
+
+    Args:
+        data: DataFrame with experiment data
+        parallel: Use parallel processing for dominance checks
+        workers: Number of parallel workers
     """
     if data.empty or 'combined_score' not in data.columns:
         return []
@@ -100,16 +121,25 @@ def calculate_pareto_frontier(data: pd.DataFrame) -> List[ParetoPoint]:
     # Determine Pareto optimality
     # A point is Pareto-optimal if no other point dominates it
     # (dominates = lower cost AND higher quality)
-    for i, p1 in enumerate(points):
-        is_dominated = False
-        for j, p2 in enumerate(points):
-            if i != j:
-                # p2 dominates p1 if p2 has lower cost AND higher quality
-                if p2.avg_cost <= p1.avg_cost and p2.avg_quality >= p1.avg_quality:
-                    if p2.avg_cost < p1.avg_cost or p2.avg_quality > p1.avg_quality:
-                        is_dominated = True
-                        break
-        p1.is_pareto_optimal = not is_dominated
+    if parallel and len(points) > 10:
+        # Parallel dominance checking for larger datasets
+        tasks = [(i, p, points) for i, p in enumerate(points)]
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            results = list(executor.map(_check_dominance, tasks))
+        for idx, is_dominated in results:
+            points[idx].is_pareto_optimal = not is_dominated
+    else:
+        # Sequential processing for small datasets
+        for i, p1 in enumerate(points):
+            is_dominated = False
+            for j, p2 in enumerate(points):
+                if i != j:
+                    # p2 dominates p1 if p2 has lower cost AND higher quality
+                    if p2.avg_cost <= p1.avg_cost and p2.avg_quality >= p1.avg_quality:
+                        if p2.avg_cost < p1.avg_cost or p2.avg_quality > p1.avg_quality:
+                            is_dominated = True
+                            break
+            p1.is_pareto_optimal = not is_dominated
 
     # Rank by quality per dollar
     points_sorted = sorted(points, key=lambda x: x.quality_per_dollar, reverse=True)
@@ -365,8 +395,11 @@ def run_cost_quality_analysis(
     print(f"Analyzing {len(data)} runs...")
 
     # Calculate Pareto frontier
-    print("\nCalculating Pareto frontier...")
-    points = calculate_pareto_frontier(data)
+    if parallel:
+        print(f"\nCalculating Pareto frontier (parallel, {workers} workers)...")
+    else:
+        print("\nCalculating Pareto frontier...")
+    points = calculate_pareto_frontier(data, parallel=parallel, workers=workers)
 
     # Score efficiency
     print("Scoring quality efficiency...")

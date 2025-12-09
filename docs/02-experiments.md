@@ -1,5 +1,8 @@
 # Experiment Results
 
+**Version:** 3.0  
+**Last Updated:** December 2025
+
 ## Overview
 
 Two phases of experiments were conducted:
@@ -62,7 +65,7 @@ Two phases of experiments were conducted:
 
 ---
 
-## v2.0 Results (Latest)
+## v2.0 Results
 
 Version 2.0 introduced reasoning-focused experiments and session-based isolation:
 
@@ -71,11 +74,129 @@ Version 2.0 introduced reasoning-focused experiments and session-based isolation
 - **Verified Experiments**: Ground truth accuracy testing (math, logic problems)
 - **Extended A/B Testing**: Multiple prompt variants comparison
 
-### v2.0 Coverage
-Run the latest experiments to see updated results:
+### Verified Experiment Results (Ground Truth)
+
+These experiments use problems with known correct answers for objective accuracy measurement:
+
+| Difficulty | Flash Accuracy | Pro Accuracy | Pro Advantage |
+|------------|---------------|--------------|---------------|
+| All | 95% | 100% | +5.3% |
+| **Hard** | 60% | 80% | **+33.3%** |
+
+> **Key Finding**: Pro's advantage increases dramatically on hard problems, justifying its cost premium for complex reasoning tasks.
+
 ```bash
+# Run verified experiments
+python3 -m src.experiments.verified_experiment --compare-models -n 20
+
+# Hard problems only (where Pro shines)
+python3 -m src.experiments.verified_experiment --compare-models -d hard -n 10
+```
+
+---
+
+## v3.0 Current Version
+
+Version 3.0 completed all 6 phases of development improvements.
+
+### Development Phases Overview
+
+| Phase | Focus | Key Deliverables |
+|-------|-------|------------------|
+| 1 | Critical Fixes | Retry logic, 26 unit tests, exception handling |
+| 2 | Code Quality | Consolidated runners (~200 lines saved), structured logging |
+| 3 | UX Improvements | CLI validation, cost estimation, progress tracking, health checks |
+| 4 | Performance | Database indexes, environment configuration |
+| 5 | New Features | Token Profiler, Cost-Quality Analysis, RAG pipeline, visualization module |
+| 6 | Refactoring | Modular package architecture (5,824 lines refactored) |
+
+### Phase Details
+
+<details>
+<summary><b>Phase 1-2: Foundation</b></summary>
+
+**Phase 1 - Critical Fixes:**
+- Added retry decorator with exponential backoff in `genai_client.py`
+- Fixed bare `except:` exceptions
+- Added 26 unit tests for core functionality
+
+**Phase 2 - Code Quality:**
+- Consolidated 6 duplicated `_run_single_*_iteration()` into generic `_run_single_iteration()`
+- Created generic `run_workflow_experiment()` runner
+- Removed unused legacy files
+- Added structured logging with `--log-level` CLI flag
+
+</details>
+
+<details>
+<summary><b>Phase 3-4: UX & Performance</b></summary>
+
+**Phase 3 - UX Improvements:**
+- Added CLI error validation with `parser.error()`
+- Added `--estimate-cost` flag for pre-experiment cost preview
+- Added real-time progress tracking (variant cost, cumulative cost, ETA)
+- Added `--health-check` command
+
+**Phase 4 - Performance:**
+- Added compound database indexes:
+  - `idx_runs_workflow_model` on runs(workflow, model)
+  - `idx_stages_run_turn` on stages(run_id, turn)
+  - `idx_runs_timestamp` on runs(timestamp)
+- Environment configuration for GCP, gRPC, TensorFlow
+
+</details>
+
+<details>
+<summary><b>Phase 5-6: Features & Refactoring</b></summary>
+
+**Phase 5 - New Features:**
+- Token Distribution Profiler (`--workflow token_profile`)
+- Cost-Quality Frontier Analysis (`--workflow cost_quality`)
+- RAG Pipeline with 3 variants (`--workflow rag`)
+- Visualization module with shared utilities
+
+**Phase 6 - Codebase Refactoring:**
+
+| Original File | New Package | Lines |
+|---------------|-------------|-------|
+| `pipeline.py` | `src/pipeline/` | 1,404 |
+| `experiment.py` | `src/experiment/` | 1,281 |
+| `prompt_templates.py` | `src/config/prompt_domains/` | 1,310 |
+| `vulnerability_ground_truth.py` | `src/evaluation/vulnerabilities/` | 1,829 |
+
+</details>
+
+### New Workflows Added
+
+| Workflow | Description | API Calls |
+|----------|-------------|-----------|
+| `rag` | Retrieval-Augmented Generation (3 variants) | Yes |
+| `token_profile` | Token distribution analysis | No |
+| `cost_quality` | Pareto frontier cost-quality analysis | No |
+
+### RAG Pipeline Variants
+- **rag_basic**: 5 docs, no verification (lowest cost)
+- **rag_verified**: 10 docs with citation verification
+- **rag_hybrid**: Flash retrieval + Pro generation (best quality)
+
+### Infrastructure Improvements
+- Visualization module (`src/visualization/`) with shared utilities
+- Parallel support for cost-quality analysis
+- Comprehensive troubleshooting guide ([05-troubleshooting.md](05-troubleshooting.md))
+- Health check and cost estimation CLI commands
+- Structured logging with configurable levels
+
+### Running v3.0 Experiments
+```bash
+# Full suite including RAG
 python3 -m src.experiment --full-experiment
-python3 notebooks/generate_report.py
+
+# RAG-specific experiments
+python3 -m src.experiment --workflow rag --model flash --iterations 10
+
+# Analysis workflows (no API cost)
+python3 -m src.experiment --workflow cost_quality --parallel
+python3 -m src.experiment --workflow token_profile
 ```
 
 Results are saved to `figures/summary.md` in your session directory.
@@ -85,3 +206,17 @@ Results are saved to `figures/summary.md` in your session directory.
 ## Key Insight
 
 **Flash provides 7x better quality-per-dollar** for most tasks. Pro justified only for complex reasoning where quality improvement exceeds cost premium.
+
+For detailed analysis of cost-quality tradeoffs, use:
+```bash
+python3 -m src.experiment --workflow cost_quality
+```
+
+---
+
+## Related Documentation
+
+- [03-pipelines.md](03-pipelines.md) - Pipeline configurations
+- [04-recommendations.md](04-recommendations.md) - Optimization strategies
+- [06-new-workflows.md](06-new-workflows.md) - RAG and analysis workflow details
+

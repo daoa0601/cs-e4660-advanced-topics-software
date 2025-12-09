@@ -16,7 +16,9 @@ Modern LLM applications use complex multi-stage pipelines—agentic workflows, m
 - **Per-stage cost attribution** for multi-step workflows
 - **Flash vs Pro model comparison** with ground truth verification
 - **Agentic loop cost analysis** (ReAct, self-correcting)
+- **RAG pipeline cost tracking** with retrieval and verification stages
 - **Session management** for reproducible experiments
+- **Analysis workflows** for cost optimization (no API calls required)
 
 ---
 
@@ -26,19 +28,19 @@ Modern LLM applications use complex multi-stage pipelines—agentic workflows, m
 |---------|-------------|--------------|
 | **MVP** | Initial prototype | Basic cost tracking, vertexai SDK |
 | **Demo v1** | Enhanced platform | Streaming metrics, parallel execution, quality evaluation |
-| **Demo v2.0** | Current version | google-genai SDK, tiered pricing, session management, verified experiments |
+| **Demo v2.0** | Major update | google-genai SDK, tiered pricing, session management |
+| **v3.0** | **Current version** | RAG pipelines, analysis workflows, modular architecture |
 
-### v2.0 Enhancements
+### v3.0 Highlights
 
-- **SDK Migration**: `vertexai` → `google-genai` with ADC authentication
-- **Tiered Pricing**: Long-context rates (>200K tokens = 2x)
-- **Session Management**: Isolated experiment runs with separate databases
-- **Ground Truth Verification**: 30 problems with known correct answers
-- **Automated Report Generation**: 7 figures + summary in one command
+- **RAG Pipelines**: 3 variants (basic, verified, hybrid) for retrieval-augmented generation
+- **Analysis Workflows**: Token profiler and cost-quality Pareto analysis (no API calls)
+- **Modular Architecture**: Refactored into clean package structure
+- **18 Pipeline Instances**: Pre-configured for various use cases
 
 ---
 
-## Latest Results (v2.0 Full Suite)
+## Latest Results (v3.0 Full Suite)
 
 | Metric | Value |
 |--------|-------|
@@ -82,6 +84,10 @@ python3 -m src.experiment --full-experiment
 
 # Generate report with figures
 python3 notebooks/generate_report.py
+
+# Analysis workflows (no API calls)
+python3 -m src.experiment --workflow cost_quality --parallel
+python3 -m src.experiment --workflow token_profile
 ```
 
 ---
@@ -89,13 +95,16 @@ python3 notebooks/generate_report.py
 ## Project Structure
 
 ```
-├── project-demo/          # Current implementation (v2.0)
-│   ├── src/               # Core modules (genai SDK, tiered pricing)
+├── project-demo/          # Current implementation (v3.0)
+│   ├── src/               # Core modules (modular package architecture)
+│   │   ├── pipeline/      # Pipeline orchestration
+│   │   ├── experiment/    # Experiment runner
+│   │   └── visualization/ # Chart utilities
 │   ├── notebooks/         # Analysis & report generation
 │   ├── sessions/          # Isolated experiment runs
 │   └── figures/           # Generated visualizations
 ├── project-mvp/           # Original prototype (archived)
-├── docs/                   # Detailed documentation
+├── docs/                  # Detailed documentation
 └── LLM_Cost_Decomposition_Platform_Report.md
 ```
 
@@ -107,8 +116,13 @@ python3 notebooks/generate_report.py
 |----------|-------------|
 | [Project Report](LLM_Cost_Decomposition_Platform_Report.md) | Full findings and methodology |
 | [Demo README](project-demo/README.md) | How to run experiments |
-| [Architecture](docs/01-architecture.md) | System design |
+| [Architecture](docs/01-architecture.md) | System design & packages |
+| [Experiments](docs/02-experiments.md) | Experiment results |
+| [Pipelines](docs/03-pipelines.md) | All 18 pipeline configurations |
 | [Recommendations](docs/04-recommendations.md) | When to use Pro vs Flash |
+| [Troubleshooting](docs/05-troubleshooting.md) | Common issues & solutions |
+| [New Workflows](docs/06-new-workflows.md) | RAG, Token Profiler, Cost-Quality |
+| [Future Improvements](docs/07-future-improvements.md) | Planned enhancements |
 
 ---
 
@@ -122,6 +136,15 @@ python3 -m src.session list            # List all sessions
 # Experiments
 python3 -m src.experiment --full-experiment
 python3 -m src.experiment --workflow react --model flash
+python3 -m src.experiment --workflow rag --model flash --iterations 10
+
+# Analysis (no API calls)
+python3 -m src.experiment --workflow cost_quality --parallel
+python3 -m src.experiment --workflow token_profile
+
+# Utilities
+python3 -m src.experiment --health-check
+python3 -m src.experiment --list-pipelines
 
 # Reports
 python3 notebooks/generate_report.py
@@ -129,4 +152,5 @@ python3 notebooks/generate_report.py
 
 ---
 
-**v2.0** | December 2025 | Total Experiment Cost: $16.72
+**v3.0** | December 2025 | Total Experiment Cost: $16.72
+

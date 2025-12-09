@@ -1,5 +1,8 @@
 # Troubleshooting Guide
 
+**Version:** 3.0  
+**Last Updated:** December 2025
+
 Common issues and solutions for the LLM Cost Decomposition Platform.
 
 ---
@@ -138,7 +141,8 @@ ls src/config/pricing.yaml  # or .json
 python3 -m src.experiment --list-pipelines
 
 # Valid workflows:
-# verbosity, context, react, multiturn, self_correcting, document
+# verbosity, context, react, multiturn, self_correcting, document, rag
+# Analysis workflows: token_profile, cost_quality
 ```
 
 ---
@@ -304,3 +308,5 @@ See [03-pipelines.md](03-pipelines.md) for pipeline architecture and extension g
    - [02-experiments.md](02-experiments.md)
    - [03-pipelines.md](03-pipelines.md)
    - [04-recommendations.md](04-recommendations.md)
+   - [06-new-workflows.md](06-new-workflows.md)
+

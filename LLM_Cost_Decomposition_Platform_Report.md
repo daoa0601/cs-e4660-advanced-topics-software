@@ -1,6 +1,7 @@
 # LLM Cost Decomposition Platform
 ## Technical Report
 
+**Version**: 3.0  
 **Project**: Granular Cost Analysis for Multi-Stage LLM Pipelines  
 **Institution**: Aalto University — Advanced Topics in Software Systems  
 **Author**: Anh Dao | December 2025  
@@ -45,36 +46,52 @@ Organizations need:
 ### Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Experiment Runner                        │
-│        --workflow, --model, --iterations, --parallel         │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Pipeline Orchestrator                      │
-│                                                              │
-│   Linear:       [S1] ──▶ [S2] ──▶ [S3]                      │
-│   ReAct:        [Think] ◀──▶ [Act] (loop, max 5)            │
-│   Multi-Turn:   [T1] ──▶ [T2] ──▶ ... ──▶ [T5]              │
-│   Self-Correct: [Generate] ◀──▶ [Validate] (loop, max 3)    │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-       ┌───────────────────┼───────────────────┐
-       ▼                   ▼                   ▼
-  ┌──────────┐       ┌──────────┐       ┌──────────┐
-  │  Vertex  │       │ Quality  │       │ Streaming│
-  │  Client  │       │ Evaluator│       │ Metrics  │
-  │          │       │          │       │          │
-  │ Flash/Pro│       │ LLM-based│       │ TTFT     │
-  └────┬─────┘       └────┬─────┘       └────┬─────┘
-       └───────────────────┼───────────────────┘
-                           ▼
-                  ┌─────────────────┐
-                  │ SQLite Database │
-                  │   runs/stages   │
-                  └─────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                     Experiment Runner (CLI)                      │
+│       --workflow, --model, --iterations, --parallel              │
+│                      src/experiment/cli.py                       │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Pipeline Orchestrator                         │
+│                       src/pipeline/                              │
+│                                                                  │
+│   Linear:       [S1] ──▶ [S2] ──▶ [S3]                          │
+│   ReAct:        [Think] ◀──▶ [Act] (loop, max 5)                │
+│   Multi-Turn:   [T1] ──▶ [T2] ──▶ ... ──▶ [T5]                  │
+│   Self-Correct: [Generate] ◀──▶ [Validate] (loop, max 3)        │
+│   RAG:          [Query] ──▶ [Retrieve] ──▶ [Generate] ──▶ [Verify]│
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+           ┌───────────────────┼───────────────────┐
+           ▼                   ▼                   ▼
+      ┌──────────┐       ┌──────────┐       ┌──────────┐
+      │ GenAI    │       │ Quality  │       │ Streaming│
+      │ Client   │       │ Evaluator│       │ Metrics  │
+      │          │       │          │       │          │
+      │ Flash/Pro│       │ LLM-based│       │ TTFT     │
+      └────┬─────┘       └────┬─────┘       └────┬─────┘
+           └──────────────────┼──────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+   ┌────────────────────┐         ┌────────────────────┐
+   │  SQLite Database   │         │   Visualization    │
+   │    src/db/         │         │ src/visualization/ │
+   └────────────────────┘         └────────────────────┘
 ```
+
+### v3.0 Modular Architecture
+
+The codebase uses a modular package structure:
+
+| Package | Purpose | Key Components |
+|---------|---------|----------------|
+| `src/pipeline/` | Pipeline orchestration | base, agentic, rag, registry |
+| `src/experiment/` | Experiment runner | core, workflows, suite, health, cli |
+| `src/config/prompt_domains/` | Domain templates | 8 domains, 45 templates |
+| `src/visualization/` | Chart utilities | constants, data_loader, chart_factories |
 
 ### Pricing (December 2025)
 
@@ -96,11 +113,34 @@ Organizations need:
 | **ReAct** | Think-Act loop | Iteration variance |
 | **Self-Correcting** | Generate-Validate loop | Retry rates |
 | **Document Analysis** | 4-stage extraction | Multi-file processing |
+| **RAG** | 5-stage retrieval-augmented | Verification overhead |
 | **Hybrid** | Flash + Pro mixed | Cost-quality tradeoff |
+
+### Available Workflows (v3.0)
+
+| Workflow | Type | API Calls | Description |
+|----------|------|-----------|-------------|
+| `verbosity` | Experiment | Yes | Compare concise vs chain-of-thought |
+| `context` | Experiment | Yes | Short vs long context impact |
+| `react` | Experiment | Yes | ReAct agent with think-act loops |
+| `multiturn` | Experiment | Yes | Multi-turn conversation (3, 5 turns) |
+| `self_correcting` | Experiment | Yes | Generate-validate-correct cycles |
+| `document` | Experiment | Yes | Document analysis pipelines |
+| `rag` | Experiment | Yes | Retrieval-augmented generation |
+| `token_profile` | Analysis | No | Token distribution analysis |
+| `cost_quality` | Analysis | No | Pareto frontier cost-quality analysis |
+
+### RAG Pipeline Variants (New in v3.0)
+
+| Variant | Retrieval K | Verification | Model Strategy | Cost |
+|---------|-------------|--------------|----------------|------|
+| `rag_basic` | 5 | No | Flash/Flash | Lowest |
+| `rag_verified` | 10 | Yes | Flash/Flash | Medium |
+| `rag_hybrid` | 10 | Yes | Flash/Pro | Higher |
 
 ### Experimental Design
 
-**Full Suite v2.0**: 1,545 runs across all workflows with streaming, parallel execution, and quality evaluation
+**Full Suite v3.0**: 1,545 runs across all workflows with streaming, parallel execution, and quality evaluation
 
 ---
 
@@ -117,7 +157,7 @@ Organizations need:
 ### Cost by Model
 
 | Model | Runs | Total Cost | Avg Cost/Run |
-|-------|------|------------|---------------|
+|-------|------|------------|--------------|
 | Flash | 809 | $4.20 | $0.0052 |
 | Pro | 736 | $12.52 | $0.0170 |
 
@@ -152,20 +192,6 @@ Refinement      ██░░░░░░░░░░░░░░░░░░░�
 
 **Quality Difference**: Pro scores **+1.59** points higher than Flash
 
----
-
-## 5. Demo Phase Enhancements
-
-The Demo phase extended MVP with:
-
-| Enhancement | Description |
-|-------------|-------------|
-| **SDK Migration** | `vertexai` → `google-genai` with ADC authentication |
-| **Tiered Pricing** | Long-context rates (>200K tokens = 2x) |
-| **Domain Prompts** | 8 domains: coding, biology, legal, medical, finance, creative, general, complex_reasoning |
-| **Ground Truth** | 30 verifiable problems for objective accuracy |
-| **Verified Experiments** | Accuracy-based comparison (not simulated quality) |
-
 ### Verified Experiment Results (Ground Truth)
 
 | Difficulty | Flash Accuracy | Pro Accuracy | Pro Advantage |
@@ -174,6 +200,31 @@ The Demo phase extended MVP with:
 | **Hard** | 60% | 80% | **+33.3%** |
 
 > **Key Finding**: Pro's advantage increases dramatically on hard problems, justifying its 3.3x cost premium for complex reasoning tasks.
+
+---
+
+## 5. Platform Evolution
+
+### Version History
+
+| Version | Phase | Key Features |
+|---------|-------|--------------|
+| MVP | Initial | Basic cost tracking, vertexai SDK |
+| v1.0 | Phase 1-2 | Streaming metrics, parallel execution, quality evaluation |
+| v2.0 | Phase 3-4 | google-genai SDK, tiered pricing, session management |
+| **v3.0** | Phase 5-6 | RAG pipelines, analysis workflows, modular architecture |
+
+### v3.0 Enhancements
+
+| Enhancement | Description |
+|-------------|-------------|
+| **SDK Migration** | `vertexai` → `google-genai` with ADC authentication |
+| **Tiered Pricing** | Long-context rates (>200K tokens = 2x) |
+| **Domain Prompts** | 8 domains: coding, biology, legal, medical, finance, creative, general, complex_reasoning |
+| **Ground Truth** | 30 verifiable problems for objective accuracy |
+| **RAG Pipelines** | 3 variants for retrieval-augmented generation |
+| **Analysis Workflows** | Token profiler, cost-quality Pareto analysis |
+| **Modular Architecture** | Large files refactored into packages |
 
 ---
 
@@ -194,6 +245,17 @@ The Demo phase extended MVP with:
 3. **Use concise prompts** — 25x cost savings
 4. **Truncate context** — for conversations beyond 3 turns
 5. **Monitor termination reasons** — identify cost runaways
+6. **Use analysis workflows** — identify optimization opportunities
+
+### Using Analysis Workflows
+
+```bash
+# Token distribution analysis
+python3 -m src.experiment --workflow token_profile
+
+# Cost-quality Pareto analysis
+python3 -m src.experiment --workflow cost_quality --parallel
+```
 
 ---
 
@@ -213,19 +275,28 @@ The Demo phase extended MVP with:
 | Improvement | Description | Priority |
 |-------------|-------------|----------|
 | **Live API for Verified** | Replace simulated responses with actual Gemini calls | High |
-| **RAG Cost Tracking** | Embedding costs, retrieval latency, chunk analysis | High |
+| **RAG Embedding Costs** | Track embedding API costs, retrieval latency | High |
 | **Cost Monitoring Dashboard** | Real-time visualization of ongoing experiments | Medium |
 | **Cost Budgets** | Run pipelines with hard cost constraints | Medium |
-| **Multi-Region Pricing** | Compare costs across GCP regions | Low |
 
-### Known Limitations
+See [07-future-improvements.md](docs/07-future-improvements.md) for the complete roadmap.
 
-| Limitation | Mitigation |
-|------------|------------|
-| Simulated tools in ReAct | Future: integrate real tool APIs |
-| No embedding costs | Future: RAG pipeline with vector DB |
-| Single GCP region | Future: multi-region experiments |
-| Automated quality scores | Ground truth verification added for objectivity |
+---
+
+## 8. Documentation Index
+
+| Document | Description |
+|----------|-------------|
+| [README.md](README.md) | Project overview and quick start |
+| [project-demo/README.md](project-demo/README.md) | Detailed usage guide |
+| [01-architecture.md](docs/01-architecture.md) | System design & package structure |
+| [02-experiments.md](docs/02-experiments.md) | Experiment results & version history |
+| [03-pipelines.md](docs/03-pipelines.md) | All 18 pipeline configurations |
+| [04-recommendations.md](docs/04-recommendations.md) | Cost optimization strategies |
+| [05-troubleshooting.md](docs/05-troubleshooting.md) | Common errors and solutions |
+| [06-new-workflows.md](docs/06-new-workflows.md) | RAG, Token Profiler, Cost-Quality |
+| [07-future-improvements.md](docs/07-future-improvements.md) | Planned enhancements |
+| [00-project-mvp.md](docs/00-project-mvp.md) | Historical MVP reference (archived) |
 
 ---
 
@@ -246,11 +317,23 @@ python3 -m src.experiment --full-experiment
 # Specific workflow
 python3 -m src.experiment --workflow react --model flash --iterations 20
 
+# RAG experiment
+python3 -m src.experiment --workflow rag --model flash --iterations 10
+
+# Analysis workflows (no API calls)
+python3 -m src.experiment --workflow token_profile
+python3 -m src.experiment --workflow cost_quality --parallel
+
 # Domain experiments
 python3 -m src.experiments.domain_experiment --domain complex_reasoning --compare-models
 
 # Verified experiments (ground truth)
 python3 -m src.experiments.verified_experiment --compare-models -n 20 -d hard
+
+# Utilities
+python3 -m src.experiment --health-check
+python3 -m src.experiment --list-pipelines
+python3 -m src.experiment --estimate-cost
 ```
 
 ### Report Generation
@@ -260,4 +343,5 @@ python3 notebooks/generate_report.py           # Generate all figures + summary
 
 ---
 
-**Platform v2.0** | December 2025 | [Detailed Docs](docs/) | [Demo README](project-demo/README.md)
+**Platform v3.0** | December 2025 | [Detailed Docs](docs/) | [Demo README](project-demo/README.md)
+
