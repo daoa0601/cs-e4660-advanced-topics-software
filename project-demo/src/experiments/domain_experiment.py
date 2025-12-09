@@ -2,10 +2,11 @@
 Domain Experiment Runner for LLM Cost Analysis
 
 This module provides a unified interface for running domain-specific
-LLM cost experiments with accurate tiered pricing.
+LLM cost experiments with real API calls and accurate tiered pricing.
 
 Key features:
 - Domain-specific prompt generation (coding, biology, legal, etc.)
+- Real Gemini API calls for accurate results
 - Tiered token pricing (standard vs long-context)
 - Integration with existing experiment framework
 - Comprehensive cost tracking and reporting
@@ -38,6 +39,7 @@ from ..pricing.tiered_pricing import (
     TieredCostTracker,
     MODEL_PRICING,
 )
+from ..clients import call_model
 
 
 @dataclass
@@ -102,10 +104,11 @@ class RunResult:
 
 class DomainExperimentRunner:
     """
-    Run domain-specific experiments with tiered pricing.
+    Run domain-specific experiments using real API calls.
     
     This class integrates:
     - Domain-specific prompt templates
+    - Real Gemini API calls
     - Tiered token pricing
     - Cost tracking per stage
     - Quality evaluation
@@ -135,42 +138,23 @@ class DomainExperimentRunner:
             "expert", "You are a helpful assistant."
         )
     
-    def simulate_llm_call(
+    def call_llm(
         self,
         prompt: str,
         stage_name: str,
         context_tokens: int = 0
     ) -> StageResult:
         """
-        Simulate an LLM API call with realistic token counts.
-        
-        In real implementation, this would call the actual API.
-        This simulation generates realistic token distributions.
+        Call the Gemini API for a pipeline stage.
         """
-        # Simulate input tokens (prompt length based)
-        base_input = len(prompt.split()) * 1.3  # ~1.3 tokens per word
-        input_tokens = int(base_input + random.gauss(50, 20))
-        input_tokens = max(10, input_tokens)
+        # Call the actual API
+        response = call_model(prompt, self.config.model_id)
+        
+        input_tokens = response.input_tokens
+        output_tokens = response.output_tokens
         
         # Add context tokens for multi-turn stages
         total_context = input_tokens + context_tokens
-        
-        # Simulate output tokens based on expected length
-        output_multipliers = {
-            "short": (50, 150),
-            "medium": (150, 400),
-            "long": (400, 1000),
-        }
-        
-        # Determine expected output based on stage
-        if "generation" in stage_name or "response" in stage_name:
-            min_out, max_out = output_multipliers.get("medium", (100, 300))
-        elif "refinement" in stage_name:
-            min_out, max_out = output_multipliers.get("long", (200, 500))
-        else:
-            min_out, max_out = output_multipliers.get("short", (50, 150))
-        
-        output_tokens = random.randint(min_out, max_out)
         
         # Calculate cost with tiered pricing
         cost_breakdown = calculate_cost_detailed(
@@ -179,11 +163,6 @@ class DomainExperimentRunner:
             output_tokens,
             total_context
         )
-        
-        # Simulate latency (correlated with output tokens)
-        base_latency = 500 + output_tokens * 2
-        latency_ms = base_latency + random.gauss(0, 100)
-        latency_ms = max(100, latency_ms)
         
         # Track this request
         self.cost_tracker.add_request(
@@ -198,13 +177,14 @@ class DomainExperimentRunner:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost=cost_breakdown["total_cost"],
-            latency_ms=latency_ms,
+            latency_ms=response.latency_ms,
             pricing_tier=cost_breakdown["pricing_tier"],
             context_tokens=total_context,
-            output_text=f"[Simulated output for {stage_name}]",
+            output_text=response.text if response.success else "[API Error]",
             metadata={
                 "input_rate": cost_breakdown["input_rate"],
                 "output_rate": cost_breakdown["output_rate"],
+                "success": response.success,
             }
         )
     
@@ -213,12 +193,12 @@ class DomainExperimentRunner:
         prompt_data: Dict[str, Any],
         run_id: str
     ) -> RunResult:
-        """Run a single prompt through a simulated pipeline."""
+        """Run a single prompt through the pipeline with real API calls."""
         stages = []
         accumulated_context = 0
         
         # Stage 1: Initial generation
-        stage1 = self.simulate_llm_call(
+        stage1 = self.call_llm(
             prompt=prompt_data["prompt"],
             stage_name="generation",
             context_tokens=accumulated_context
@@ -228,8 +208,9 @@ class DomainExperimentRunner:
         
         # Stage 2: Refinement (50% chance)
         if random.random() > 0.5:
-            stage2 = self.simulate_llm_call(
-                prompt=f"Refine: {stage1.output_text[:100]}",
+            refinement_prompt = f"Please refine and improve this response:\n\n{stage1.output_text[:500]}\n\nProvide an improved version:"
+            stage2 = self.call_llm(
+                prompt=refinement_prompt,
                 stage_name="refinement",
                 context_tokens=accumulated_context
             )
@@ -237,8 +218,9 @@ class DomainExperimentRunner:
             accumulated_context += stage2.input_tokens + stage2.output_tokens
         
         # Stage 3: Quality evaluation
-        stage3 = self.simulate_llm_call(
-            prompt="Evaluate the quality of this response",
+        eval_prompt = f"Rate the quality of this response on a scale of 1-10. Just provide the number:\n\n{stages[-1].output_text[:500]}"
+        stage3 = self.call_llm(
+            prompt=eval_prompt,
             stage_name="evaluation",
             context_tokens=accumulated_context
         )
@@ -250,34 +232,19 @@ class DomainExperimentRunner:
         total_input = sum(s.input_tokens for s in stages)
         total_output = sum(s.output_tokens for s in stages)
         
-        # Simulate quality score with domain-aware adjustments
-        # Pro has a larger advantage on complex reasoning tasks
-        is_complex_reasoning = self.config.domain == "complex_reasoning"
-        difficulty = prompt_data.get("difficulty", "medium")
-        
-        # Base quality depends on model
-        if "pro" in self.config.model_id.lower():
-            # Pro excels at complex reasoning
-            base_quality = 8.5 if is_complex_reasoning else 7.5
-        else:
-            # Flash struggles more with complex reasoning
-            base_quality = 6.0 if is_complex_reasoning else 6.5
-        
-        # Difficulty modifiers (harder tasks show more Pro advantage)
-        if is_complex_reasoning:
-            # Complex reasoning: much steeper penalty for hard tasks on Flash
-            difficulty_modifier = {
-                "easy": 0.5,
-                "medium": 0,
-                "hard": -1.5 if "flash" in self.config.model_id.lower() else -0.3
-            }.get(difficulty, 0)
-        else:
-            # Other domains: standard difficulty impact
-            difficulty_modifier = {"easy": 0.5, "medium": 0, "hard": -0.5}.get(difficulty, 0)
-        
-        # Add noise and clamp
-        quality_score = base_quality + difficulty_modifier + random.gauss(0, 0.4)
-        quality_score = max(1, min(10, quality_score))
+        # Extract quality score from evaluation response
+        # Try to parse the number from the evaluation output
+        quality_score = 7.0  # Default
+        try:
+            eval_text = stage3.output_text.strip()
+            # Find first number in the response
+            import re
+            numbers = re.findall(r'\b(\d+(?:\.\d+)?)\b', eval_text)
+            if numbers:
+                quality_score = float(numbers[0])
+                quality_score = max(1, min(10, quality_score))  # Clamp to 1-10
+        except (ValueError, IndexError):
+            pass
         
         return RunResult(
             run_id=run_id,

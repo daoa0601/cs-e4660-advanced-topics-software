@@ -31,3 +31,6 @@ pyyaml>=6.0.0
 
 # Web Framework (for test documents)
 flask>=3.0.0
+
+# Vector Store for RAG
+faiss-cpu>=1.7.4

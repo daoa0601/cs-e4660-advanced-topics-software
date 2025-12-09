@@ -1,11 +1,12 @@
 """
-RAG (Retrieval-Augmented Generation) pipeline.
+RAG (Retrieval-Augmented Generation) pipeline with real embeddings.
 
-Contains:
-- RAGPipeline: Multi-stage RAG with simulated retrieval
+Uses FAISS vector store for semantic retrieval with embedding cost tracking.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
 from ..clients import call_model
 from ..cost_calculator import calculate_cost
@@ -13,14 +14,18 @@ from ..config import get_model_id
 from .base import StageType, StageResult, PipelineResult
 
 
+# Default FAISS index path
+DEFAULT_FAISS_PATH = Path(__file__).parent.parent.parent / "data" / "faiss"
+
+
 @dataclass
 class RAGPipeline:
     """
-    Retrieval-Augmented Generation pipeline with simulated retrieval.
+    Retrieval-Augmented Generation pipeline with real embedding retrieval.
 
     Stages:
     1. Query Understanding - Parse and classify the query
-    2. Retrieval (simulated) - Select k documents from corpus
+    2. Retrieval - Semantic search using FAISS embeddings
     3. Context Assembly - Build prompt with retrieved docs
     4. Generation - Generate response with context
     5. Verification (optional) - Check citations
@@ -32,35 +37,55 @@ class RAGPipeline:
     query_model: str = "flash"
     generation_model: str = "flash"
     verification_model: str = "flash"
-
-    # Simulated document corpus for retrieval
-    DOCUMENT_CORPUS = [
-        {"id": 1, "title": "Machine Learning Basics", "content": "Machine learning is a subset of AI that enables systems to learn from data. Key concepts include supervised learning, unsupervised learning, and reinforcement learning."},
-        {"id": 2, "title": "Neural Networks", "content": "Neural networks are computing systems inspired by biological neural networks. They consist of layers of interconnected nodes that process information."},
-        {"id": 3, "title": "Natural Language Processing", "content": "NLP enables computers to understand human language. Techniques include tokenization, named entity recognition, and sentiment analysis."},
-        {"id": 4, "title": "Deep Learning", "content": "Deep learning uses multi-layer neural networks. Popular architectures include CNNs for images and RNNs/Transformers for sequences."},
-        {"id": 5, "title": "AI Ethics", "content": "AI ethics addresses concerns about bias, fairness, transparency, and accountability in AI systems. Responsible AI development is crucial."},
-        {"id": 6, "title": "Computer Vision", "content": "Computer vision enables machines to interpret visual information. Applications include image classification, object detection, and facial recognition."},
-        {"id": 7, "title": "Reinforcement Learning", "content": "RL trains agents through trial and error using rewards. Key algorithms include Q-learning, policy gradients, and actor-critic methods."},
-        {"id": 8, "title": "Data Preprocessing", "content": "Data preprocessing includes cleaning, normalization, and feature engineering. Quality data is essential for model performance."},
-        {"id": 9, "title": "Model Evaluation", "content": "Model evaluation uses metrics like accuracy, precision, recall, and F1-score. Cross-validation helps assess generalization."},
-        {"id": 10, "title": "Large Language Models", "content": "LLMs like GPT and BERT are transformer-based models trained on vast text data. They excel at text generation and understanding."},
-    ]
-
-    def _simulate_retrieval(self, query: str, k: int) -> list[dict]:
-        """Simulate document retrieval by selecting relevant documents."""
-        # Simple keyword-based retrieval simulation
-        query_words = set(query.lower().split())
-        scored_docs = []
-
-        for doc in self.DOCUMENT_CORPUS:
-            doc_words = set(doc['content'].lower().split())
-            overlap = len(query_words & doc_words)
-            scored_docs.append((overlap, doc))
-
-        # Sort by relevance score and take top k
-        scored_docs.sort(key=lambda x: x[0], reverse=True)
-        return [doc for _, doc in scored_docs[:k]]
+    faiss_path: Optional[str] = None
+    
+    # Vector store instance (lazy loaded)
+    _vector_store = None
+    
+    def _get_vector_store(self):
+        """Load the FAISS vector store (lazy initialization)."""
+        if self._vector_store is None:
+            from ..rag import FAISSVectorStore
+            
+            index_path = self.faiss_path or str(DEFAULT_FAISS_PATH)
+            index_file = Path(index_path) / "index.faiss"
+            
+            if not index_file.exists():
+                raise FileNotFoundError(
+                    f"FAISS index not found at {index_path}. "
+                    "Run 'python scripts/build_rag_index.py' first."
+                )
+            
+            self._vector_store = FAISSVectorStore.load(index_path)
+        
+        return self._vector_store
+    
+    def _retrieve(self, query: str, k: int) -> tuple:
+        """
+        Retrieve documents using FAISS semantic search.
+        
+        Returns:
+            (retrieved_docs, embedding_cost, latency_ms)
+        """
+        import time
+        
+        store = self._get_vector_store()
+        
+        start = time.perf_counter()
+        results, embedding_cost = store.search(query, k=k)
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        
+        # Convert to doc format
+        retrieved_docs = []
+        for i, result in enumerate(results):
+            retrieved_docs.append({
+                "id": i + 1,
+                "title": result.chunk.source,
+                "content": result.chunk.text,
+                "score": result.score,
+            })
+        
+        return retrieved_docs, embedding_cost, latency_ms
 
     def execute(
         self,
@@ -68,7 +93,7 @@ class RAGPipeline:
         model: str,
         streaming: bool = False,
     ) -> PipelineResult:
-        """Execute RAG pipeline with simulated retrieval."""
+        """Execute RAG pipeline with real embedding retrieval."""
         stage_results = []
         total_cost = 0
         total_latency = 0
@@ -111,10 +136,11 @@ Analysis:"""
         total_input_tokens += query_response.input_tokens
         total_output_tokens += query_response.output_tokens
 
-        # Stage 2: Simulated Retrieval (no API call, just simulation)
-        retrieved_docs = self._simulate_retrieval(query, self.retrieval_k)
+        # Stage 2: Semantic Retrieval (real embeddings)
+        retrieved_docs, embedding_cost, retrieval_latency = self._retrieve(query, self.retrieval_k)
+        
         retrieval_summary = "\n".join([
-            f"[{doc['id']}] {doc['title']}: {doc['content'][:100]}..."
+            f"[{doc['id']}] {doc['title']} (score: {doc['score']:.3f}): {doc['content'][:100]}..."
             for doc in retrieved_docs
         ])
 
@@ -124,13 +150,16 @@ Analysis:"""
             stage_order=2,
             input_text=query,
             output_text=retrieval_summary,
-            input_tokens=0,  # Simulated - no actual tokens
+            input_tokens=0,  # Embedding costs tracked separately
             output_tokens=0,
-            cost=0,  # No API cost for simulated retrieval
-            latency_ms=10,  # Simulated latency
-            model="simulated",
+            cost=embedding_cost,  # Real embedding cost!
+            latency_ms=retrieval_latency,
+            model="text-embedding-004",
             success=True,
         ))
+
+        total_cost += embedding_cost
+        total_latency += retrieval_latency
 
         # Stage 3: Context Assembly
         context_docs = "\n\n".join([

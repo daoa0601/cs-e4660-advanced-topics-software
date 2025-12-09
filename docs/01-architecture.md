@@ -11,6 +11,8 @@
 |-----------|------------|---------|
 | LLM Provider | Google Vertex AI | Gemini 2.5 Flash & Pro |
 | SDK | google-genai (v0.3+) | Unified API with ADC |
+| Embeddings | text-embedding-004 | RAG semantic search |
+| Vector Store | FAISS | Local similarity search |
 | Database | SQLite (WAL mode) | Thread-safe storage |
 | Analysis | Pandas, Plotly | Data visualization |
 | Logging | Python logging | Structured, configurable logging |
@@ -66,8 +68,14 @@ project-demo/
 │   │   ├── __init__.py              # Re-exports for backward compatibility
 │   │   ├── base.py                  # StageType, PipelineStage, Pipeline
 │   │   ├── agentic.py               # ReActPipeline, MultiTurnPipeline, SelfCorrectingPipeline
-│   │   ├── rag.py                   # RAGPipeline class
+│   │   ├── rag.py                   # RAGPipeline class (real FAISS retrieval)
 │   │   └── registry.py              # 18 pipeline instances + get_pipeline()
+│   │
+│   ├── rag/                         # RAG components (NEW)
+│   │   ├── embedding_client.py      # Google GenAI text-embedding-004
+│   │   ├── vector_store.py          # FAISS with disk persistence
+│   │   ├── chunker.py               # Document chunking utilities
+│   │   └── cost_tracker.py          # Embedding cost tracking
 │   │
 │   ├── experiment/                  # Experiment runner (refactored)
 │   │   ├── __init__.py              # Re-exports
@@ -79,6 +87,11 @@ project-demo/
 │   │   ├── logging.py               # log_pipeline_result()
 │   │   ├── summary.py               # _print_full_summary()
 │   │   └── cli.py                   # main(), argument parsing
+│   │
+│   ├── experiments/                 # Specialized experiments
+│   │   ├── verified_experiment.py   # Ground truth (real API calls)
+│   │   ├── domain_experiment.py     # Domain-specific (real API calls)
+│   │   └── ab_testing.py            # A/B testing
 │   │
 │   ├── config/
 │   │   ├── prompt_domains/          # Domain templates (refactored)
@@ -114,6 +127,10 @@ project-demo/
 │   ├── session.py                   # Session management
 │   └── logging_config.py            # Structured logging
 │
+├── scripts/                         # Utility scripts
+│   ├── generate_academic_corpus.py  # Generate RAG knowledge base
+│   └── build_rag_index.py           # Build FAISS index
+│
 ├── notebooks/                       # Analysis notebooks
 │   ├── analysis.ipynb               # Interactive analysis
 │   ├── generate_report.py           # Automated figure generation
@@ -121,7 +138,8 @@ project-demo/
 │
 ├── sessions/                        # Isolated experiment runs
 ├── figures/                         # Generated visualizations
-└── data/                            # Default database location
+├── data/                            # Default database + FAISS index
+└── test-docs/                       # RAG corpus files
 ```
 
 ---

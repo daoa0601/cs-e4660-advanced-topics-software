@@ -45,7 +45,7 @@ This runs:
 | `multiturn` | Experiment | Multi-turn conversation (3 and 5 turns) |
 | `self_correcting` | Experiment | Generate-validate-correct cycles |
 | `document` | Experiment | Document analysis pipelines |
-| `rag` | Experiment | Retrieval-augmented generation (basic, verified, hybrid) |
+| `rag` | Experiment | RAG with real FAISS embeddings (requires index) |
 | `token_profile` | Analysis | Analyze token distribution patterns (no API calls) |
 | `cost_quality` | Analysis | Pareto frontier cost-quality analysis (no API calls) |
 
@@ -144,6 +144,27 @@ python3 -m src.experiments.verified_experiment --compare-models -n 20
 python3 -m src.experiments.verified_experiment --compare-models -d hard -n 10
 ```
 
+> **Note**: All experiments now use real Gemini API calls (no simulation).
+
+---
+
+## RAG Setup (FAISS Vector Store)
+
+The RAG pipeline uses real semantic embeddings. Before running RAG experiments:
+
+```bash
+# 1. Generate academic corpus (~200 research chunks)
+python3 scripts/generate_academic_corpus.py --chunks 200
+
+# 2. Build FAISS index
+python3 scripts/build_rag_index.py
+
+# 3. Run RAG experiments
+python3 -m src.experiment --workflow rag --iterations 5
+```
+
+Index is persisted to `data/faiss/` for reuse.
+
 ---
 
 ## Tiered Pricing
@@ -197,14 +218,20 @@ project-demo/
 │   ├── clients/               # LLM client (google-genai SDK with Vertex AI)
 │   ├── pricing/               # Tiered pricing engine (200K token threshold)
 │   ├── config/                # Model configs, prompts, verifiable problems
-│   └── experiments/           # A/B testing, domain, and verified experiments
+│   ├── experiments/           # A/B testing, domain, and verified experiments
+│   ├── rag/                   # RAG components (embeddings, FAISS, chunking)
+│   └── pipeline/              # Pipeline implementations (linear, agentic, RAG)
+├── scripts/
+│   ├── generate_academic_corpus.py  # Generate RAG knowledge base
+│   └── build_rag_index.py           # Build FAISS index
 ├── notebooks/
 │   ├── analysis.ipynb         # Jupyter analysis
 │   ├── generate_report.py     # Auto-generate figures
 │   └── flash_vs_pro_analysis.py
 ├── figures/                   # Generated visualizations
 ├── sessions/                  # Isolated experiment runs
-└── data/                      # Default database
+├── data/                      # Default database + FAISS index
+└── test-docs/                 # RAG corpus files
 ```
 
 ---

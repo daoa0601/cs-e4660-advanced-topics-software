@@ -5,7 +5,7 @@ Supports:
 - Linear pipelines (standard multi-stage)
 - Multi-model hybrid pipelines
 - Agentic patterns (ReAct, multi-turn, self-correcting)
-- RAG pipelines with simulated retrieval
+- RAG pipelines with real embedding retrieval
 - Streaming with TTFT metrics
 - Parallel execution for faster experimentation
 """

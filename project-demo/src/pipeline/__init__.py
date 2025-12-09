@@ -1,11 +1,10 @@
 """
-Pipeline orchestrator for multi-stage LLM workflows.
+Pipeline implementations for different LLM workflows.
 
-Supports:
-- Multi-model stages (use different models per stage)
-- Linear pipelines (stage1 -> stage2 -> stage3)
-- Agentic patterns (ReAct loops, multi-turn, self-correcting)
-- RAG pipelines with simulated retrieval
+Contains:
+- Linear/multi-stage pipelines
+- Agentic patterns (ReAct, multi-turn, self-correcting)
+- RAG pipelines with real embedding retrieval
 - Streaming with TTFT metrics
 """
 

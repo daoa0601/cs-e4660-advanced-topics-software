@@ -32,7 +32,7 @@ class StageType(Enum):
     CONVERSATION = "conversation"  # Multi-turn
     # RAG types
     QUERY_UNDERSTANDING = "query_understanding"  # Parse and classify query
-    RETRIEVAL = "retrieval"                      # Document retrieval (simulated)
+    RETRIEVAL = "retrieval"                      # Document retrieval (real embeddings)
     CONTEXT_ASSEMBLY = "context_assembly"        # Build context with docs
     VERIFICATION = "verification"                # Citation verification
 

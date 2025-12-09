@@ -11,10 +11,12 @@ Usage:
     python -m src.experiments.verified_experiment --iterations 20
     python -m src.experiments.verified_experiment --compare-models
     python -m src.experiments.verified_experiment --difficulty hard
+    python -m src.experiments.verified_experiment --live  # Use real API calls
 """
 
 import json
 import random
+import re
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field, asdict
@@ -32,6 +34,7 @@ from ..pricing.tiered_pricing import (
     TieredCostTracker,
     get_model_pricing,
 )
+from ..vertex_client import call_model
 
 
 @dataclass
@@ -73,13 +76,13 @@ class VerifiedExperimentConfig:
 
 class VerifiedExperimentRunner:
     """
-    Run experiments with verifiable ground truth.
+    Run experiments with verifiable ground truth using real API calls.
     
     This runner:
     1. Samples problems from the verifiable problem set
-    2. Calls the LLM (or simulates for testing)
+    2. Calls the Gemini API for each problem
     3. Verifies responses against known answers
-    4. Reports actual accuracy (not simulated quality)
+    4. Reports actual accuracy with real costs
     """
     
     def __init__(self, config: VerifiedExperimentConfig):
@@ -96,61 +99,40 @@ class VerifiedExperimentRunner:
             seed=self.config.seed
         )
     
-    def simulate_llm_response(self, problem: VerifiableProblem) -> Dict[str, Any]:
+    def call_llm(self, problem: VerifiableProblem) -> Dict[str, Any]:
         """
-        Simulate an LLM response for testing.
-        
-        In production, this would call the actual API.
-        This simulation varies correctness based on model and difficulty.
+        Call the Gemini API for a problem.
         """
-        # Simulate token counts
-        input_tokens = len(problem.prompt.split()) * 1.3 + random.gauss(50, 10)
-        input_tokens = int(max(10, input_tokens))
-        output_tokens = random.randint(100, 400)
+        # Create a clear prompt for the problem
+        prompt = f"""{problem.prompt}
+
+Provide your answer clearly. If this is a math problem, show your work and state the final numerical answer.
+If this is a factual question, provide the answer directly.
+
+Answer:"""
         
-        # Simulate correctness probability based on model and difficulty
-        is_pro = "pro" in self.config.model_id.lower()
+        # Call the model
+        response = call_model(prompt, self.config.model_id)
         
-        # Base correctness rates (these are the key differentiators)
-        correctness_rates = {
-            "easy": {"flash": 0.90, "pro": 0.95},
-            "medium": {"flash": 0.70, "pro": 0.85},
-            "hard": {"flash": 0.45, "pro": 0.75},  # Big difference on hard problems!
-        }
-        
-        model_type = "pro" if is_pro else "flash"
-        rate = correctness_rates.get(problem.difficulty, {"flash": 0.6, "pro": 0.8})[model_type]
-        
-        is_correct = random.random() < rate
-        
-        # Generate a simulated response
-        if is_correct:
-            response = f"After careful analysis, the answer is {problem.answer}."
-        else:
-            # Generate wrong answer
-            if isinstance(problem.answer, (int, float)):
-                wrong = problem.answer + random.choice([-2, -1, 1, 2, 5, 10])
-                response = f"I believe the answer is {wrong}."
-            else:
-                response = "I'm not certain, but I think the answer might be something else."
-        
-        # Simulate latency (Pro is slightly slower but more careful)
-        base_latency = 500 + output_tokens * 2
-        if is_pro:
-            base_latency *= 1.2  # Pro takes more time to "think"
-        latency_ms = base_latency + random.gauss(0, 50)
+        if not response.success:
+            return {
+                "response": f"[API Error: {response.error_message}]",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "latency_ms": 0,
+            }
         
         return {
-            "response": response,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "latency_ms": max(100, latency_ms),
+            "response": response.text,
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+            "latency_ms": response.latency_ms,
         }
     
     def run_single_problem(self, problem: VerifiableProblem) -> VerifiedResult:
         """Run a single problem and verify the result."""
-        # Get LLM response (simulated for now)
-        llm_result = self.simulate_llm_response(problem)
+        # Get LLM response via real API call
+        llm_result = self.call_llm(problem)
         
         # Verify the response
         is_correct = problem.verify(llm_result["response"])
@@ -515,8 +497,10 @@ if __name__ == "__main__":
         iterations=args.iterations,
         difficulty=args.difficulty,
         seed=args.seed,
-        output_dir=args.output
+        output_dir=args.output,
     )
+    
+    print(f"\n🔴 Running verified experiment with {args.model} (real API calls)")
     
     runner = VerifiedExperimentRunner(config)
     report = runner.run_experiment()
