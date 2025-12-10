@@ -81,7 +81,7 @@ Examples:
     parser.add_argument(
         "--full-suite",
         action="store_true",
-        help="Run all experiments with both models"
+        help="Customizable full run: all workflows, both models (respects --iterations, --workers, etc.)"
     )
     parser.add_argument(
         "--test-connection",
@@ -111,7 +111,7 @@ Examples:
     parser.add_argument(
         "--full-experiment",
         action="store_true",
-        help="Run complete experiment suite: all workflows, A/B tests, 20 iterations, 16 workers, streaming, LLM eval"
+        help="One-click production run: 20 iters, 16 workers, streaming, LLM eval, A/B tests (custom flags ignored)"
     )
     parser.add_argument(
         "--log-level",
@@ -129,11 +129,44 @@ Examples:
         action="store_true",
         help="Check system health (database, API, config) and exit"
     )
+    parser.add_argument(
+        "--session",
+        type=str,
+        metavar="NAME",
+        help="Create or use a named session for isolated experiment data"
+    )
+    parser.add_argument(
+        "--list-sessions",
+        action="store_true",
+        help="List all experiment sessions and exit"
+    )
 
     args = parser.parse_args()
 
     # Configure logging based on CLI argument
     setup_logging(level=args.log_level)
+
+    # Handle session management (before other operations)
+    if args.list_sessions:
+        from ..session import list_sessions
+        list_sessions()
+        return
+
+    if args.session:
+        from ..session import new_session, use_session, get_current_session
+        from pathlib import Path
+
+        # Check if session exists
+        from ..session import SESSION_DIR
+        session_path = SESSION_DIR / args.session
+        if session_path.exists():
+            use_session(args.session)
+        else:
+            new_session(args.session)
+
+        # Show current session
+        session = get_current_session()
+        print(f"\n📁 Using session: {session['name']}")
 
     # Handle reset before init
     if args.reset:

@@ -201,6 +201,113 @@ def get_session_figures_path() -> Path:
     return Path(session["path"]) / "figures"
 
 
+def compare_sessions(session1: str, session2: str) -> dict:
+    """
+    Compare metrics between two sessions.
+
+    Args:
+        session1: First session name
+        session2: Second session name
+
+    Returns:
+        Dictionary with comparison metrics
+    """
+    import sqlite3
+    import pandas as pd
+
+    results = {"session1": session1, "session2": session2, "metrics": {}}
+
+    for session_name, key in [(session1, "s1"), (session2, "s2")]:
+        # Handle "default" session
+        if session_name == "default":
+            db_path = DEFAULT_DATA_DIR / "experiments.db"
+        else:
+            db_path = SESSION_DIR / session_name / "data" / "experiments.db"
+
+        if not db_path.exists():
+            print(f"❌ Database not found for session: {session_name}")
+            return results
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        try:
+            # Get run statistics
+            runs = pd.read_sql_query("SELECT * FROM runs", conn)
+            quality = pd.read_sql_query("SELECT * FROM quality_scores", conn)
+
+            results["metrics"][key] = {
+                "name": session_name,
+                "total_runs": len(runs),
+                "total_cost": runs["total_cost"].sum() if "total_cost" in runs else 0,
+                "avg_cost": runs["total_cost"].mean() if "total_cost" in runs else 0,
+                "models": runs["model"].unique().tolist() if "model" in runs else [],
+                "workflows": runs["workflow"].unique().tolist() if "workflow" in runs else [],
+            }
+
+            if not quality.empty and "combined_score" in quality.columns:
+                results["metrics"][key]["avg_quality"] = quality["combined_score"].mean()
+            else:
+                results["metrics"][key]["avg_quality"] = None
+
+        except Exception as e:
+            print(f"❌ Error reading session {session_name}: {e}")
+            results["metrics"][key] = {"name": session_name, "error": str(e)}
+        finally:
+            conn.close()
+
+    # Calculate differences
+    if "s1" in results["metrics"] and "s2" in results["metrics"]:
+        s1 = results["metrics"]["s1"]
+        s2 = results["metrics"]["s2"]
+
+        if "error" not in s1 and "error" not in s2:
+            results["comparison"] = {
+                "run_diff": s2["total_runs"] - s1["total_runs"],
+                "cost_diff": s2["total_cost"] - s1["total_cost"],
+                "cost_ratio": s2["total_cost"] / s1["total_cost"] if s1["total_cost"] > 0 else None,
+            }
+            if s1["avg_quality"] and s2["avg_quality"]:
+                results["comparison"]["quality_diff"] = s2["avg_quality"] - s1["avg_quality"]
+
+    return results
+
+
+def print_session_comparison(session1: str, session2: str):
+    """Print a formatted comparison between two sessions."""
+    results = compare_sessions(session1, session2)
+
+    print(f"\n📊 Session Comparison: {session1} vs {session2}")
+    print("=" * 60)
+
+    for key, label in [("s1", session1), ("s2", session2)]:
+        if key in results["metrics"]:
+            m = results["metrics"][key]
+            if "error" in m:
+                print(f"\n{label}: Error - {m['error']}")
+            else:
+                print(f"\n{label}:")
+                print(f"  Runs:     {m['total_runs']}")
+                print(f"  Cost:     ${m['total_cost']:.4f}")
+                print(f"  Avg Cost: ${m['avg_cost']:.6f}/run")
+                if m["avg_quality"]:
+                    print(f"  Quality:  {m['avg_quality']:.1f}")
+                print(f"  Workflows: {', '.join(m['workflows'][:5])}")
+
+    if "comparison" in results:
+        c = results["comparison"]
+        print(f"\n📈 Difference ({session2} - {session1}):")
+        print(f"  Runs:  {c['run_diff']:+d}")
+        print(f"  Cost:  ${c['cost_diff']:+.4f}")
+        if c["cost_ratio"]:
+            print(f"  Ratio: {c['cost_ratio']:.2f}x")
+        if "quality_diff" in c:
+            print(f"  Quality: {c['quality_diff']:+.1f}")
+
+    print("=" * 60)
+    return results
+
+
 def main():
     """CLI entry point."""
     if len(sys.argv) < 2:
@@ -230,7 +337,14 @@ def main():
         print(f"Current session: {session['name']}")
         print(f"Database: {get_session_db_path()}")
         print(f"Figures: {get_session_figures_path()}")
-    
+
+    elif command == "compare":
+        if len(sys.argv) < 4:
+            print("Usage: python -m src.session compare <session1> <session2>")
+            print("       Use 'default' for the default session")
+            return
+        print_session_comparison(sys.argv[2], sys.argv[3])
+
     else:
         print(f"Unknown command: {command}")
         print(__doc__)

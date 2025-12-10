@@ -6,8 +6,9 @@ This directory contains all experiment reports and generated figures.
 
 | Version | Phase | Date | Description |
 |---------|-------|------|-------------|
-| [v1.0](mvp-v1.0/) | MVP | Dec 2024 | Initial baseline experiments |
-| [v2.0](demo-v2.0/) | Demo | Dec 2024 | Streaming, parallel execution, quality evaluation |
+| [v1.0](mvp-v1.0/) | MVP | Dec 2025 | Initial baseline experiments |
+| [v2.0](demo-v2.0/) | Demo | Dec 2025 | Streaming, parallel execution, quality evaluation |
+| **[v3.0](full_run_v3/)** | **Full Run** | **Dec 2025** | **2,444 runs, $30.70, all workflows** |
 | [v2.1](v2.1-template/) | Template | - | Template for next experiment run |
 
 ## Directory Structure
@@ -20,12 +21,17 @@ reports/
 │   ├── demo_report.pdf    # Full report document
 │   ├── summary.md         # Key metrics summary
 │   └── figures/           # Generated visualizations
+├── full_run_v3/           # Full v3.0 experiment run (latest)
+│   ├── summary.md         # Key metrics summary
+│   └── figures/           # 6 PNG charts + analysis HTMLs
 │       ├── 01_cost_by_model.png
 │       ├── 02_cost_by_pipeline.png
-│       └── ...
+│       ├── 03_quality_by_model.png
+│       ├── 04_cost_quality_scatter.png
+│       ├── 05_stage_cost_distribution.png
+│       ├── 06_pro_vs_flash_advantage.png
+│       └── *.html         # Analysis charts (token, pareto)
 └── v2.1-template/         # Template for next run
-    ├── experiment-config.json
-    └── README.md
 ```
 
 ## Generating New Reports

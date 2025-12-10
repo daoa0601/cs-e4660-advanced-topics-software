@@ -76,17 +76,19 @@ python3 -m src.experiment --list-pipelines
 
 ## Session Management (Isolate Experiment Runs)
 
-Keep each experiment run in a separate folder:
+> **Known Issue**: Session folders are created but data currently goes to the default `data/experiments.db`. A fix is planned - see [CURRENT_PLAN.md](../CURRENT_PLAN.md).
+
+Create named sessions for experiment organization:
 
 ```bash
 # Create new session
 python3 -m src.session new "experiment_name"
 
-# Run experiments (uses session's database)
+# Run experiments
 python3 -m src.experiment --full-experiment
 
 # Generate report (saves to session's figures folder)
-python3 notebooks/generate_report.py
+python3 notebooks/generate_report.py --output-dir reports/experiment_name/figures
 
 # List all sessions
 python3 -m src.session list
@@ -105,7 +107,7 @@ Session structure:
 ```
 sessions/
 ├── experiment_name_20251206_1500/
-│   ├── data/experiments.db
+│   ├── data/experiments.db    # Currently empty (known issue)
 │   ├── figures/*.png
 │   └── session_info.json
 ```
@@ -240,19 +242,19 @@ project-demo/
 
 | Command | Description |
 |---------|-------------|
-| `--full-experiment` | Complete suite with all options |
-| `--full-suite` | All workflows, both models |
+| `--full-experiment` | **One-click production run**: 20 iters, 16 workers, streaming, LLM eval, A/B tests (flags ignored) |
+| `--full-suite` | **Customizable full run**: All workflows, both models (respects custom flags, no A/B tests) |
 | `--workflow X` | Single workflow |
 | `--model flash/pro` | Specific model |
-| `--iterations N` | Number of runs |
-| `--parallel --workers N` | Parallel execution |
-| `--streaming` | Capture TTFT metrics |
-| `--llm-eval` | Enable quality scoring |
+| `--iterations N` | Number of runs (ignored by `--full-experiment`) |
+| `--parallel --workers N` | Parallel execution (ignored by `--full-experiment`) |
+| `--streaming` | Capture TTFT metrics (ignored by `--full-experiment`) |
+| `--llm-eval` | Enable quality scoring (ignored by `--full-experiment`) |
 | `--list-pipelines` | Show available pipelines |
 | `--summary` | Show existing run stats |
 | `--reset` | Clear database |
 | `--health-check` | Verify database, API, config, and pipelines |
-| `--estimate-cost` | Preview experiment cost without running |
+| `--estimate-cost` | Preview experiment cost (requires `--workflow` and `--model`) |
 | `--log-level` | Set logging level (DEBUG, INFO, WARNING, ERROR) |
 
 ---
@@ -281,9 +283,12 @@ Estimate costs before running experiments:
 # Estimate cost for a specific workflow
 python3 -m src.experiment --workflow react --model flash --iterations 10 --estimate-cost
 
-# Estimate full experiment cost
-python3 -m src.experiment --full-experiment --estimate-cost
+# Estimate costs for multiple workflows (--estimate-cost requires --workflow and --model)
+python3 -m src.experiment --workflow verbosity --model flash --iterations 20 --estimate-cost
+python3 -m src.experiment --workflow rag --model pro --iterations 20 --estimate-cost
 ```
+
+> **Note:** `--estimate-cost` does not work with `--full-experiment`. Estimate individual workflows instead.
 
 ---
 

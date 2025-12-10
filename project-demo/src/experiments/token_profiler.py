@@ -30,6 +30,7 @@ from src.visualization import (
     MODEL_COLORS,
     DEFAULT_TEMPLATE,
     CHART_CONFIG,
+    save_figure_png,
 )
 
 
@@ -440,6 +441,135 @@ def print_token_profile_report(profiles: Dict[str, TokenProfile]):
     print("\n" + "=" * 70)
 
 
+def create_token_analysis_figure(profiles: Dict[str, TokenProfile]) -> go.Figure:
+    """
+    Create consolidated 2x2 token analysis figure for PNG export.
+
+    Layout:
+    - Top-left: Aggregated token histograms (Flash vs Pro)
+    - Top-right: I/O ratios by stage type
+    - Bottom-left: Context growth patterns
+    - Bottom-right: Summary statistics
+    """
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=(
+            'Token Distribution (Flash vs Pro)',
+            'Input/Output Ratios by Stage',
+            'Context Growth Pattern',
+            'Summary by Workflow'
+        ),
+        specs=[
+            [{"type": "histogram"}, {"type": "bar"}],
+            [{"type": "scatter"}, {"type": "bar"}]
+        ],
+        vertical_spacing=0.18,
+        horizontal_spacing=0.10,
+    )
+
+    # Panel 1: Aggregated histogram (top-left)
+    flash_all_tokens = []
+    pro_all_tokens = []
+    for key, profile in profiles.items():
+        is_flash = 'flash' in profile.model.lower()
+        for dist in profile.distributions:
+            total = list(dist.input_tokens) + list(dist.output_tokens)
+            if is_flash:
+                flash_all_tokens.extend(total)
+            else:
+                pro_all_tokens.extend(total)
+
+    if flash_all_tokens:
+        fig.add_trace(
+            go.Histogram(x=flash_all_tokens, marker_color=FLASH_COLOR, opacity=0.6, name='Flash'),
+            row=1, col=1
+        )
+    if pro_all_tokens:
+        fig.add_trace(
+            go.Histogram(x=pro_all_tokens, marker_color=PRO_COLOR, opacity=0.6, name='Pro'),
+            row=1, col=1
+        )
+
+    # Panel 2: I/O ratios by stage (top-right)
+    from collections import defaultdict
+    stage_ratios = defaultdict(list)
+    for key, profile in profiles.items():
+        for dist in profile.distributions:
+            if dist.input_output_ratio > 0:
+                stage_ratios[dist.stage_type].append(dist.input_output_ratio)
+
+    if stage_ratios:
+        stages = list(stage_ratios.keys())[:8]  # Limit to top 8 stages
+        avg_ratios = [np.mean(stage_ratios[s]) for s in stages]
+        fig.add_trace(
+            go.Bar(x=stages, y=avg_ratios, marker_color='#45b7d1', name='Avg Ratio', showlegend=False),
+            row=1, col=2
+        )
+
+    # Panel 3: Context growth (bottom-left)
+    has_growth_data = False
+    for key, profile in profiles.items():
+        if profile.context_growth and len(profile.context_growth) > 1:
+            has_growth_data = True
+            color = FLASH_COLOR if 'flash' in profile.model.lower() else PRO_COLOR
+            fig.add_trace(
+                go.Scatter(
+                    x=list(range(1, len(profile.context_growth) + 1)),
+                    y=profile.context_growth,
+                    mode='lines+markers',
+                    marker=dict(color=color, size=6),
+                    line=dict(color=color),
+                    name=f'{profile.workflow}',
+                    showlegend=False,
+                ),
+                row=2, col=1
+            )
+
+    # Panel 4: Summary by workflow (bottom-right)
+    workflow_data = defaultdict(lambda: {'flash': 0, 'pro': 0})
+    for key, profile in profiles.items():
+        model_key = 'flash' if 'flash' in profile.model.lower() else 'pro'
+        total_tokens = sum(d.total_tokens for d in profile.distributions)
+        workflow_data[profile.workflow][model_key] = total_tokens
+
+    if workflow_data:
+        workflows = list(workflow_data.keys())[:6]  # Limit to 6 workflows
+        flash_totals = [workflow_data[w]['flash'] / 1000 for w in workflows]  # In thousands
+        pro_totals = [workflow_data[w]['pro'] / 1000 for w in workflows]
+
+        fig.add_trace(
+            go.Bar(x=workflows, y=flash_totals, marker_color=FLASH_COLOR, name='Flash (K)', showlegend=False),
+            row=2, col=2
+        )
+        fig.add_trace(
+            go.Bar(x=workflows, y=pro_totals, marker_color=PRO_COLOR, name='Pro (K)', showlegend=False),
+            row=2, col=2
+        )
+
+    fig.update_layout(
+        title=dict(text='Token Distribution Analysis', y=0.98, x=0.5, xanchor='center'),
+        template=DEFAULT_TEMPLATE,
+        width=1200,
+        height=900,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1),
+        barmode='group',
+        margin=dict(t=80),
+    )
+
+    # Update axis labels
+    fig.update_xaxes(title_text='Token Count', row=1, col=1)
+    fig.update_yaxes(title_text='Frequency', row=1, col=1)
+    fig.update_xaxes(title_text='Stage Type', row=1, col=2)
+    fig.update_yaxes(title_text='I/O Ratio', row=1, col=2)
+    fig.update_xaxes(title_text='Turn', row=2, col=1)
+    fig.update_yaxes(title_text='Context Tokens', row=2, col=1)
+    fig.update_xaxes(title_text='Workflow', row=2, col=2)
+    fig.update_yaxes(title_text='Total Tokens (K)', row=2, col=2)
+
+    return fig
+
+
 def run_token_profiler(
     workflow: Optional[str] = None,
     model: Optional[str] = None,
@@ -477,30 +607,18 @@ def run_token_profiler(
     if show_charts or save_charts:
         from pathlib import Path
 
-        # Histogram for each profile
-        for key, profile in profiles.items():
-            fig = generate_token_histogram(profile)
-            if show_charts:
-                fig.show()
-            if save_charts:
-                Path(output_dir).mkdir(exist_ok=True)
-                fig.write_html(f"{output_dir}/token_histogram_{key}.html")
+        if save_charts:
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        # Ratio comparison
-        ratio_fig = generate_ratio_comparison(profiles)
-        if ratio_fig.data:
+        # Create consolidated token analysis figure (PNG)
+        token_fig = create_token_analysis_figure(profiles)
+        if token_fig.data:
             if show_charts:
-                ratio_fig.show()
+                token_fig.show()
             if save_charts:
-                ratio_fig.write_html(f"{output_dir}/token_ratios.html")
-
-        # Context growth
-        growth_fig = generate_context_growth_chart(profiles)
-        if growth_fig.data:
-            if show_charts:
-                growth_fig.show()
-            if save_charts:
-                growth_fig.write_html(f"{output_dir}/context_growth.html")
+                saved_png = save_figure_png(token_fig, f"{output_dir}/08_token_analysis")
+                ext = "png" if saved_png else "html"
+                print(f"   Saved: {output_dir}/08_token_analysis.{ext}")
 
     return profiles
 

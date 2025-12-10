@@ -7,12 +7,14 @@ Run this script after experiments to generate all figures and a summary report.
 Usage:
     cd project-demo
     python3 notebooks/generate_report.py
+    python3 notebooks/generate_report.py --output-dir reports/full_run_v3/figures
 
 Output:
     - figures/*.png - All visualization figures
     - figures/summary.md - Key metrics summary
 """
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -46,8 +48,10 @@ from src.visualization import (
 )
 
 # Output directory - use session path if available
-def _get_figures_dir():
-    """Get figures directory from session or default."""
+def _get_figures_dir(custom_dir: str = None):
+    """Get figures directory from custom path, session, or default."""
+    if custom_dir:
+        return Path(custom_dir)
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from src.session import get_session_figures_path
@@ -56,7 +60,8 @@ def _get_figures_dir():
         pass
     return Path(__file__).parent.parent / "figures"
 
-FIGURES_DIR = _get_figures_dir()
+# Will be set by main() if --output-dir is provided
+FIGURES_DIR = None
 
 
 def setup():
@@ -444,10 +449,26 @@ These tests use problems with known correct answers for objective accuracy.
 
 def main():
     """Generate all figures and summary."""
+    global FIGURES_DIR
+
+    parser = argparse.ArgumentParser(
+        description="Generate experiment report figures and summary"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Custom output directory for figures and summary"
+    )
+    args = parser.parse_args()
+
+    # Set the figures directory
+    FIGURES_DIR = _get_figures_dir(args.output_dir)
+
     print("\n" + "=" * 60)
     print("📈 EXPERIMENT REPORT GENERATOR")
     print("=" * 60 + "\n")
-    
+
     setup()
     data, stages = load_all_data()
     

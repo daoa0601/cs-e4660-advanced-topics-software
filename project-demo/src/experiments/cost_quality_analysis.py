@@ -18,6 +18,7 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from tqdm import tqdm
 
 from src.db import get_runs, get_stages, get_quality_scores
@@ -28,6 +29,7 @@ from src.visualization import (
     DEFAULT_TEMPLATE,
     CHART_CONFIG,
     load_experiment_data,
+    save_figure_png,
 )
 
 
@@ -294,6 +296,115 @@ def create_efficiency_bar_chart(rankings: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def create_cost_quality_combined_figure(
+    points: List[ParetoPoint],
+    rankings: pd.DataFrame,
+) -> go.Figure:
+    """
+    Create consolidated 1x2 cost-quality analysis figure for PNG export.
+
+    Layout:
+    - Left: Pareto frontier scatter plot
+    - Right: Top 10 efficiency rankings horizontal bar chart
+    """
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=(
+            'Cost vs Quality: Pareto Frontier',
+            'Quality per Dollar Rankings (Top 10)'
+        ),
+        horizontal_spacing=0.12,
+        column_widths=[0.55, 0.45],
+    )
+
+    # Left panel: Pareto frontier scatter
+    if points:
+        pareto_optimal = [p for p in points if p.is_pareto_optimal]
+        non_optimal = [p for p in points if not p.is_pareto_optimal]
+
+        # Non-optimal points by model
+        for model in ['flash', 'pro']:
+            model_points = [p for p in non_optimal if model in p.model.lower()]
+            if model_points:
+                color = FLASH_COLOR if model == 'flash' else PRO_COLOR
+                fig.add_trace(go.Scatter(
+                    x=[p.avg_cost for p in model_points],
+                    y=[p.avg_quality for p in model_points],
+                    mode='markers',
+                    name=f'{model.title()}',
+                    marker=dict(color=color, size=8, opacity=0.5),
+                    text=[p.pipeline for p in model_points],
+                    hovertemplate='%{text}<br>Cost: $%{x:.5f}<br>Quality: %{y:.1f}<extra></extra>',
+                    legendgroup=model,
+                ), row=1, col=1)
+
+        # Pareto-optimal points (stars)
+        for model in ['flash', 'pro']:
+            model_points = [p for p in pareto_optimal if model in p.model.lower()]
+            if model_points:
+                color = FLASH_COLOR if model == 'flash' else PRO_COLOR
+                fig.add_trace(go.Scatter(
+                    x=[p.avg_cost for p in model_points],
+                    y=[p.avg_quality for p in model_points],
+                    mode='markers',
+                    name=f'{model.title()} (Pareto)',
+                    marker=dict(color=color, size=12, symbol='star',
+                               line=dict(width=1, color='black')),
+                    text=[p.pipeline for p in model_points],
+                    hovertemplate='%{text}<br>Cost: $%{x:.5f}<br>Quality: %{y:.1f}<extra></extra>',
+                    legendgroup=model,
+                    showlegend=False,
+                ), row=1, col=1)
+
+        # Pareto frontier line
+        if pareto_optimal:
+            frontier_sorted = sorted(pareto_optimal, key=lambda x: x.avg_cost)
+            fig.add_trace(go.Scatter(
+                x=[p.avg_cost for p in frontier_sorted],
+                y=[p.avg_quality for p in frontier_sorted],
+                mode='lines',
+                name='Frontier',
+                line=dict(color='gray', dash='dash', width=1.5),
+                hoverinfo='skip',
+                showlegend=False,
+            ), row=1, col=1)
+
+    # Right panel: Efficiency bar chart (horizontal)
+    if not rankings.empty:
+        top_rankings = rankings.head(10).copy()
+        top_rankings['label'] = (
+            top_rankings['pipeline'] + ' (' +
+            top_rankings['model'].str.extract(r'(flash|pro)', expand=False).str.title() + ')'
+        )
+        colors = [FLASH_COLOR if 'flash' in m.lower() else PRO_COLOR
+                  for m in top_rankings['model']]
+
+        fig.add_trace(go.Bar(
+            x=top_rankings['quality_per_dollar'],
+            y=top_rankings['label'],
+            orientation='h',
+            marker_color=colors,
+            text=[f'{v:.0f}' for v in top_rankings['quality_per_dollar']],
+            textposition='auto',
+            showlegend=False,
+        ), row=1, col=2)
+
+    fig.update_layout(
+        title='Cost-Quality Frontier Analysis',
+        template=DEFAULT_TEMPLATE,
+        width=1200,
+        height=500,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=0.5),
+    )
+
+    fig.update_xaxes(title_text='Cost ($)', row=1, col=1)
+    fig.update_yaxes(title_text='Quality Score', row=1, col=1)
+    fig.update_xaxes(title_text='Quality Points per $0.001', row=1, col=2)
+    fig.update_yaxes(title_text='', row=1, col=2)
+
+    return fig
+
+
 def generate_recommendations(points: List[ParetoPoint], rankings: pd.DataFrame) -> List[str]:
     """Generate actionable recommendations based on analysis."""
     recommendations = []
@@ -447,22 +558,18 @@ def run_cost_quality_analysis(
     if show_charts or save_charts:
         from pathlib import Path
 
-        # Pareto frontier chart
-        pareto_fig = create_pareto_visualization(points)
-        if show_charts and pareto_fig.data:
-            pareto_fig.show()
-        if save_charts and pareto_fig.data:
-            Path(output_dir).mkdir(exist_ok=True)
-            pareto_fig.write_html(f"{output_dir}/pareto_frontier.html")
-            print(f"\n  Saved: {output_dir}/pareto_frontier.html")
+        if save_charts:
+            Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        # Efficiency bar chart
-        efficiency_fig = create_efficiency_bar_chart(rankings)
-        if show_charts and efficiency_fig.data:
-            efficiency_fig.show()
-        if save_charts and efficiency_fig.data:
-            efficiency_fig.write_html(f"{output_dir}/efficiency_rankings.html")
-            print(f"  Saved: {output_dir}/efficiency_rankings.html")
+        # Create consolidated cost-quality figure (PNG)
+        combined_fig = create_cost_quality_combined_figure(points, rankings)
+        if combined_fig.data:
+            if show_charts:
+                combined_fig.show()
+            if save_charts:
+                saved_png = save_figure_png(combined_fig, f"{output_dir}/09_cost_quality_analysis")
+                ext = "png" if saved_png else "html"
+                print(f"\n  Saved: {output_dir}/09_cost_quality_analysis.{ext}")
 
     print("\n" + "=" * 70)
 

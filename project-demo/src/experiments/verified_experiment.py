@@ -34,7 +34,7 @@ from ..pricing.tiered_pricing import (
     TieredCostTracker,
     get_model_pricing,
 )
-from ..vertex_client import call_model
+from ..clients.genai_client import call_model
 
 
 @dataclass

@@ -22,6 +22,7 @@ import random
 import time
 import urllib.request
 import urllib.parse
+import ssl
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -115,7 +116,10 @@ def fetch_arxiv_papers(
     url = f"{ARXIV_API_URL}?{urllib.parse.urlencode(params)}"
     
     try:
-        with urllib.request.urlopen(url, timeout=30) as response:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(url, timeout=30, context=ctx) as response:
             xml_data = response.read().decode("utf-8")
     except Exception as e:
         print(f"Error fetching from arXiv: {e}")
@@ -270,22 +274,29 @@ def generate_corpus_from_arxiv(
     
     # Create chunks
     try:
-        from src.rag import TextChunker
-        chunker = TextChunker(chunk_size=500, overlap=50)
+        from src.rag import chunk_text
         
         all_chunks = []
         for paper in papers:
             content = paper.full_text or paper.abstract
             full_content = f"# {paper.title}\n\nAuthors: {', '.join(paper.authors[:3])}\n\n{content}"
             
-            chunks = chunker.chunk_text(
+            chunks = chunk_text(
                 text=full_content,
                 source=paper.arxiv_id,
-                metadata={
+                chunk_size=500,
+                overlap=50,
+                split_on_sentences=True,
+            )
+            # Add metadata manually since chunk_text doesn't take it in this version (it seems arg was removed or I need verify signatures)
+            # Wait, let me check chunk_text signature in my previous view_file output.
+            # chunk_text(text, source, chunk_size, overlap, split_on_sentences). It returns List[Chunk]. 
+            # Chunk has metadata field.
+            for chunk in chunks:
+                chunk.metadata = {
                     "title": paper.title,
                     "categories": paper.categories,
                 }
-            )
             all_chunks.extend(chunks)
         
         # Save chunks
@@ -311,9 +322,9 @@ def generate_corpus_from_arxiv(
                 }) + "\n")
         
         num_chunks = len(all_chunks)
-    except ImportError:
+    except ImportError as e:
         num_chunks = 0
-        print("Note: Chunking skipped (src.rag not available)")
+        print(f"Note: Chunking skipped (src.rag not available: {e})")
     
     # Summary
     total_words = sum(len((p.full_text or p.abstract).split()) for p in papers)

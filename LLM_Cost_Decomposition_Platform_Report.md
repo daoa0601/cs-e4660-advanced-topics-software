@@ -1,11 +1,11 @@
 # LLM Cost Decomposition Platform
 ## Technical Report
 
-**Version**: 3.0  
-**Project**: Granular Cost Analysis for Multi-Stage LLM Pipelines  
-**Institution**: Aalto University — Advanced Topics in Software Systems  
-**Author**: Anh Dao | December 2025  
-**Total Experiment Cost**: $16.72
+**Version**: 3.0
+**Project**: Granular Cost Analysis for Multi-Stage LLM Pipelines
+**Institution**: Aalto University — Advanced Topics in Software Systems
+**Author**: Anh Dao | December 2025
+**Total Experiment Cost**: $30.70
 
 ---
 
@@ -140,7 +140,7 @@ The codebase uses a modular package structure:
 
 ### Experimental Design
 
-**Full Suite v3.0**: 1,545 runs across all workflows with streaming, parallel execution, and quality evaluation
+**Full Suite v3.0**: 2,444 runs across all workflows with streaming, parallel execution, and quality evaluation
 
 ---
 
@@ -150,34 +150,35 @@ The codebase uses a modular package structure:
 
 | Metric | Value |
 |--------|-------|
-| Pipeline Runs | **1,545** |
-| Stage Executions | **3,599** |
-| Total Cost | **$16.72** |
+| Pipeline Runs | **2,444** |
+| Stage Executions | **5,947** |
+| Total Cost | **$30.70** |
 
 ### Cost by Model
 
 | Model | Runs | Total Cost | Avg Cost/Run |
 |-------|------|------------|--------------|
-| Flash | 809 | $4.20 | $0.0052 |
-| Pro | 736 | $12.52 | $0.0170 |
+| Flash | 1,268 | $7.14 | $0.0056 |
+| Pro | 1,176 | $23.57 | $0.0200 |
 
-**Cost Ratio**: Pro costs **3.3x** more than Flash
+**Cost Ratio**: Pro costs **3.6x** more than Flash
 
 ### Stage Cost Distribution
 
 ```
-Generation      ████████████████████░░░░░  45%
-Conversation    ██████████░░░░░░░░░░░░░░░  25%
-Thinking (ReAct)██████░░░░░░░░░░░░░░░░░░░  15%
-Critique        ████░░░░░░░░░░░░░░░░░░░░░  10%
-Refinement      ██░░░░░░░░░░░░░░░░░░░░░░░   5%
+Conversation    ███████████░░░░░░░░░░░░░░  27%
+Generation      ██████████░░░░░░░░░░░░░░░  26%
+Refinement      ██████░░░░░░░░░░░░░░░░░░░  14%
+Critique        █████░░░░░░░░░░░░░░░░░░░░  12%
+Extraction      ███░░░░░░░░░░░░░░░░░░░░░░   7%
+Evaluation      ██░░░░░░░░░░░░░░░░░░░░░░░   6%
 ```
 
 ### Key Findings
 
 | Finding | Impact |
 |---------|--------|
-| **Flash vs Pro efficiency** | Flash is **7.5x cheaper** with comparable quality on simple tasks |
+| **Flash vs Pro efficiency** | Flash is **3.6x cheaper** with comparable quality on simple tasks |
 | **Hybrid pipelines** | 60% cost reduction, 96% quality retention |
 | **Prompt engineering** | Concise prompts = **25x lower cost** than detailed |
 | **Context growth** | Turn 5 costs **8x** Turn 1 |
@@ -187,10 +188,30 @@ Refinement      ██░░░░░░░░░░░░░░░░░░░�
 
 | Model | Avg Quality |
 |-------|-------------|
-| Flash | 82.86 |
-| Pro | 84.45 |
+| Flash | 83.26 |
+| Pro | 84.48 |
 
-**Quality Difference**: Pro scores **+1.59** points higher than Flash
+**Quality Difference**: Pro scores **+1.22** points higher than Flash
+
+### Experiment Figures
+
+The following figures are available in [`project-demo/reports/full_run_v3/figures/`](project-demo/reports/full_run_v3/figures/):
+
+| Figure | Description |
+|--------|-------------|
+| `01_cost_by_model.png` | Average cost comparison by model |
+| `02_cost_by_pipeline.png` | Cost breakdown across all pipelines |
+| `03_quality_by_model.png` | Quality score comparison |
+| `04_cost_quality_scatter.png` | Cost vs quality relationship |
+| `05_stage_cost_distribution.png` | Cost attribution by stage type |
+| `06_pro_vs_flash_advantage.png` | Quality advantage analysis |
+
+![Cost by Model](project-demo/reports/full_run_v3/figures/01_cost_by_model.png)
+![Cost by Pipeline](project-demo/reports/full_run_v3/figures/02_cost_by_pipeline.png)
+![Quality by Model](project-demo/reports/full_run_v3/figures/03_quality_by_model.png)
+![Cost vs Quality](project-demo/reports/full_run_v3/figures/04_cost_quality_scatter.png)
+![Stage Cost Distribution](project-demo/reports/full_run_v3/figures/05_stage_cost_distribution.png)
+![Pro vs Flash Advantage](project-demo/reports/full_run_v3/figures/06_pro_vs_flash_advantage.png)
 
 ### Verified Experiment Results (Ground Truth)
 
@@ -199,7 +220,7 @@ Refinement      ██░░░░░░░░░░░░░░░░░░░�
 | All | 95% | 100% | +5.3% |
 | **Hard** | 60% | 80% | **+33.3%** |
 
-> **Key Finding**: Pro's advantage increases dramatically on hard problems, justifying its 3.3x cost premium for complex reasoning tasks.
+> **Key Finding**: Pro's advantage increases dramatically on hard problems, justifying its 3.6x cost premium for complex reasoning tasks.
 
 ---
 

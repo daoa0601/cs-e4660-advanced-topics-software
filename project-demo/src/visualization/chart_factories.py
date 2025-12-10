@@ -311,3 +311,37 @@ def create_dual_panel_comparison(
     )
 
     return fig
+
+
+def save_figure_png(
+    fig: go.Figure,
+    filepath: str,
+    scale: int = 2,
+    fallback_html: bool = True,
+) -> bool:
+    """
+    Save figure as PNG with HTML fallback.
+
+    Follows the pattern from generate_report.py for consistent output.
+
+    Args:
+        fig: Plotly Figure to save
+        filepath: Output path (without extension - will add .png or .html)
+        scale: Image scale factor (default 2 for high-res)
+        fallback_html: If True, save as HTML when kaleido unavailable
+
+    Returns:
+        True if saved as PNG, False if HTML fallback used
+    """
+    from pathlib import Path
+
+    Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        fig.write_image(f"{filepath}.png", scale=scale)
+        return True
+    except ValueError:
+        # Kaleido not installed
+        if fallback_html:
+            fig.write_html(f"{filepath}.html")
+        return False

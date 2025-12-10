@@ -12,6 +12,7 @@ numpy>=1.24.0
 # Visualization
 plotly>=5.18.0
 matplotlib>=3.7.0
+kaleido>=0.2.1
 
 # Jupyter
 jupyter>=1.0.0

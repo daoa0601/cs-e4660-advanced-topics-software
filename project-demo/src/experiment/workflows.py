@@ -240,11 +240,11 @@ def run_rag_experiment(
 ) -> dict:
     """Run RAG pipeline experiment with different retrieval/verification strategies."""
     rag_queries = [
-        "What is machine learning and how does it work?",
-        "Explain the difference between deep learning and neural networks.",
-        "How do transformers work in NLP?",
-        "What are the ethical considerations in AI development?",
-        "Describe reinforcement learning algorithms and their applications.",
+        "How do efficient Transformer architectures address the quadratic memory complexity of self-attention?",
+        "Compare different approaches to relative positional encoding in long-sequence modeling.",
+        "What are the specific challenges and solutions for applying Transformers to non-text domains like 3D segmentation or music?",
+        "Explain the role of reinforcement learning in recent LLM alignment and optimization techniques.",
+        "How does retrieval-augmented generation (RAG) technically mitigate hallucinations compared to standard parametric knowledge?",
     ]
     pipeline_configs = {
         "rag_basic": (get_pipeline("rag_basic"), rag_queries),

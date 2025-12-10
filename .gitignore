@@ -39,3 +39,10 @@ PRESENTATION_SCRIPT.md
 
 # Insecure Test Documents
 project-demo/test_documents/
+
+# Project Artifacts (Generated)
+sessions/
+
+test-docs/
+.pytest_cache/
+.env.local

@@ -95,7 +95,65 @@ python3 -m src.experiments.verified_experiment --compare-models -d hard -n 10
 
 ---
 
-## v3.0 Current Version
+## full_run_v3 Results (Latest)
+
+The most comprehensive experiment run with 2,444 pipeline executions.
+
+### Summary Statistics
+
+| Metric | Value |
+|--------|-------|
+| Pipeline Runs | **2,444** |
+| Stage Executions | **5,947** |
+| Total Cost | **$30.70** |
+
+### Cost by Model
+
+| Model | Runs | Total Cost | Avg Cost/Run |
+|-------|------|------------|--------------|
+| Flash | 1,268 | $7.14 | $0.0056 |
+| Pro | 1,176 | $23.57 | $0.0200 |
+
+**Cost Ratio**: Pro costs **3.6x** more than Flash
+
+### Stage Cost Distribution
+
+| Stage Type | Cost | % of Total |
+|------------|------|------------|
+| Conversation | $8.30 | 27% |
+| Generation | $8.02 | 26% |
+| Refinement | $4.36 | 14% |
+| Critique | $3.52 | 12% |
+| Extraction | $2.01 | 7% |
+| Evaluation | $1.81 | 6% |
+
+### Quality Comparison
+
+| Model | Avg Quality |
+|-------|-------------|
+| Flash | 83.26 |
+| Pro | 84.48 |
+
+**Quality Difference**: Pro scores **+1.22** points higher
+
+### Cost-Quality Analysis Highlights
+
+| Configuration | Quality/$ | Notes |
+|---------------|-----------|-------|
+| verbosity_concise (Flash) | 2.47B | Best value |
+| context_short (Flash) | 601M | Efficient |
+| react_research (Flash) | 185M | Highest quality (92.2) |
+
+### Reports and Figures
+
+See [`project-demo/reports/full_run_v3/`](../project-demo/reports/full_run_v3/) for:
+- 6 PNG visualizations
+- `summary.md` with detailed metrics
+- Analysis charts (HTML)
+
+---
+
+## v3.0 Architecture
 
 Version 3.0 completed all 6 phases of development improvements.
 
@@ -185,6 +243,12 @@ Version 3.0 completed all 6 phases of development improvements.
 - Comprehensive troubleshooting guide ([05-troubleshooting.md](05-troubleshooting.md))
 - Health check and cost estimation CLI commands
 - Structured logging with configurable levels
+
+### December 2025 Cleanup
+- Removed dead code: `src/config.py`, `src/pipelines/`, `src/vertex_client.py`
+- Migrated `verified_experiment.py` to use `genai_client`
+- Updated analysis notebook with RAG, Token Profiler, Pareto Frontier, Domain, and Verified Experiments sections
+- Consolidated RAG documentation between `03-pipelines.md` and `06-new-workflows.md`
 
 ### Running v3.0 Experiments
 ```bash

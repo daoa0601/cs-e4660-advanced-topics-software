@@ -25,6 +25,7 @@ from .chart_factories import (
     create_model_comparison_bars,
     create_stage_distribution_chart,
     get_model_color_map,
+    save_figure_png,
 )
 
 __all__ = [
@@ -44,4 +45,5 @@ __all__ = [
     "create_model_comparison_bars",
     "create_stage_distribution_chart",
     "get_model_color_map",
+    "save_figure_png",
 ]

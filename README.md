@@ -124,6 +124,13 @@ python3 -m src.experiment --workflow token_profile
 | [New Workflows](docs/06-new-workflows.md) | RAG, Token Profiler, Cost-Quality |
 | [Future Improvements](docs/07-future-improvements.md) | Planned enhancements |
 
+### Course Materials
+
+| Resource | Description |
+|----------|-------------|
+| [Study Logs](study-logs/) | Weekly study logs (PDFs) |
+| [Reading Material](reading-material/) | Course readings and slides |
+
 ---
 
 ## Key Commands

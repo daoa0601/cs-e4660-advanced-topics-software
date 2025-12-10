@@ -61,27 +61,15 @@
 [Query Understanding] → [Retrieval] → [Context Assembly] → [Generation] → [Verification]
 ```
 
-5-stage pipeline simulating retrieval-augmented generation:
+5-stage pipeline with retrieval-augmented generation. Three variants available:
 
-1. **Query Understanding**: Analyzes query to extract key concepts and search terms
-2. **Retrieval**: Simulates document retrieval with configurable k (number of docs)
-3. **Context Assembly**: Combines retrieved documents into coherent context
-4. **Generation**: Produces response using assembled context
-5. **Verification** (optional): Fact-checks and verifies citations
+| Variant | Retrieval K | Verification | Model Strategy |
+|---------|-------------|--------------|----------------|
+| `rag_basic` | 5 | No | Flash/Flash |
+| `rag_verified` | 10 | Yes | Flash/Flash |
+| `rag_hybrid` | 10 | Yes | Flash/Pro |
 
-#### RAG Variants
-
-| Variant | Retrieval K | Verification | Model Strategy | Cost |
-|---------|-------------|--------------|----------------|------|
-| `rag_basic` | 5 | No | Flash/Flash | Lowest |
-| `rag_verified` | 10 | Yes | Flash/Flash | Medium |
-| `rag_hybrid` | 10 | Yes | Flash/Pro | Higher |
-
-#### RAG Cost Implications
-
-- Verification adds ~30% overhead but improves accuracy
-- Hybrid (Flash retrieval + Pro generation) balances cost and quality
-- Context size scales with retrieval_k parameter
+> **Usage details**: See [06-new-workflows.md](06-new-workflows.md) for RAG workflow commands and cost analysis.
 
 ---
 
@@ -103,6 +91,8 @@ Use Flash for early stages, Pro for critical stages:
 ```
 
 **Result**: Pro quality for generation/verification with Flash efficiency for retrieval stages
+
+> See [06-new-workflows.md](06-new-workflows.md) for detailed RAG cost analysis.
 
 ---
 

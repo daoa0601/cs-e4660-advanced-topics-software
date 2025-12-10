@@ -14,23 +14,9 @@ This document covers the three workflow types added in v3.0:
 
 ### Overview
 
-The RAG (Retrieval-Augmented Generation) workflow simulates a full retrieval-augmented generation pipeline with 5 stages. It demonstrates the cost implications of document retrieval, context assembly, and optional verification steps.
+The RAG (Retrieval-Augmented Generation) workflow uses real FAISS embeddings for semantic retrieval. It demonstrates the cost implications of document retrieval, context assembly, and optional verification steps.
 
-### Pipeline Variants
-
-| Variant | Description | Verification | Retrieval K | Multi-Model |
-|---------|-------------|--------------|-------------|-------------|
-| `rag_basic` | Basic RAG: 5 docs, no verification | No | 5 | No |
-| `rag_verified` | Verified RAG: 10 docs with citation verification | Yes | 10 | No |
-| `rag_hybrid` | Hybrid RAG: Flash retrieval, Pro generation | Yes | 10 | Yes |
-
-### Pipeline Stages
-
-1. **Query Understanding** - Analyzes the user query to extract key concepts and search terms
-2. **Retrieval** - Simulates document retrieval (returns k mock documents with relevance scores)
-3. **Context Assembly** - Assembles retrieved documents into a coherent context
-4. **Generation** - Generates the final response using the assembled context
-5. **Verification** (optional) - Verifies citations and fact-checks the response
+> **Architecture**: See [03-pipelines.md](03-pipelines.md#rag-retrieval-augmented-generation) for pipeline structure and variants.
 
 ### Usage
 
