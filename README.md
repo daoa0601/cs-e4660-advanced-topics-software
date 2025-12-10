@@ -131,6 +131,10 @@ python3 -m src.experiment --workflow token_profile
 | [Study Logs](study-logs/) | Weekly study logs (PDFs) |
 | [Reading Material](reading-material/) | Course readings and slides |
 
+**Citation**: Hong-Linh Truong, *Advanced Topics in Software Systems*, https://github.com/rdsea/sys4bigml, 2020
+
+**Copyrights/Licences**: The lecture slides and course structure/info use [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 ---
 
 ## Key Commands
